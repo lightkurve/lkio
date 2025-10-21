@@ -19,6 +19,7 @@ def generic_io(
         boolean_keys = [],
         bitwise_keys = [], 
         close_file = True,
+
     ):
     """
     Reads in a generic fits file and returns a lkdata.DataSet
@@ -128,7 +129,7 @@ def generic_io(
     for key in data_keys:
         if key in header_keys:
             d = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask]
-            print(f"{key} dimensions: {d.ndim}")
+            #print(f"{key} dimensions: {d.ndim}")
             if f"{key}_ERR" in error_columns:
                 if d.ndim == 1:
                     ds[key] = lkdata.DataSeries(data = d,
@@ -161,6 +162,8 @@ def generic_io(
         time_indices = ts,
         meta = meta,
         )
+    
+    
     
     if close_file:
         hdu.close()

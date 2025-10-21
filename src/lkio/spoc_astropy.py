@@ -41,6 +41,13 @@ def read_spoc(
         lkdata.DataSet containing data from the fits file
     """
 
+    '''if isinstance(file, fits.HDUList):
+        hdu = file
+    elif isinstance(file, str):
+        hdu = fits.open(file)
+    else:
+        warnings.warn('No file provided.')'''
+    
     if isinstance(file, fits.HDUList):
         hdu = file
     elif isinstance(file, str):
@@ -49,14 +56,13 @@ def read_spoc(
         warnings.warn('No file provided.')
 
 
-
     ds = generic_io(
-        hdu = hdu,
+        file = hdu,
         time_keys = time_keys,
         data_keys=data_keys,
         boolean_keys= boolean_keys,
         bitwise_keys = bitwise_keys,
-        close_file = False
+        close_file = False,
         )
 
 

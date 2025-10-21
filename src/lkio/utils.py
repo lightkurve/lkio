@@ -42,26 +42,26 @@ def load_cosmicray_extension(hdu):
 def return_unit(colname):
     #TODO: I think this will move to lkv3, not required for io. 
     for colname in tab.colnames:
-    # Ensure units have the correct astropy format
-    # Speed-up: comparing units by their string representation is 1000x
-    # faster than performing full-blown unit comparison
-    unitstr = str(tab[colname].unit)
-    if unitstr == "e-/s":
-        tab[colname].unit = "electron/s"
-    # Fixes issue #1504
-    if unitstr == "electron / s": #lightcurve.to_fits() saves as this string
-        tab[colname].unit = "electron/s"
-    elif unitstr == "pixels":
-        tab[colname].unit = "pixel"
-    elif unitstr == "ppm" and repr(tab[colname].unit).startswith("Unrecognized"):
-        # Workaround for issue #956
-        tab[colname].unit = ppm
-    elif unitstr == "ADU":
-        tab[colname].unit = "adu"
-    elif unitstr.lower() == "unitless":
-        tab[colname].unit = ""
-    elif unitstr.lower() == "degcelcius":
-        # CDIPS has non-astropy units
-        tab[colname].unit = "deg_C"
-    # Rename columns to lowercase
-    tab.rename_column(colname, colname.lower())
+        # Ensure units have the correct astropy format
+        # Speed-up: comparing units by their string representation is 1000x
+        # faster than performing full-blown unit comparison
+        unitstr = str(tab[colname].unit)
+        if unitstr == "e-/s":
+            tab[colname].unit = "electron/s"
+        # Fixes issue #1504
+        if unitstr == "electron / s": #lightcurve.to_fits() saves as this string
+            tab[colname].unit = "electron/s"
+        elif unitstr == "pixels":
+            tab[colname].unit = "pixel"
+        elif unitstr == "ppm" and repr(tab[colname].unit).startswith("Unrecognized"):
+            # Workaround for issue #956
+            tab[colname].unit = ppm
+        elif unitstr == "ADU":
+            tab[colname].unit = "adu"
+        elif unitstr.lower() == "unitless":
+            tab[colname].unit = ""
+        elif unitstr.lower() == "degcelcius":
+            # CDIPS has non-astropy units
+            tab[colname].unit = "deg_C"
+        # Rename columns to lowercase
+        tab.rename_column(colname, colname.lower())

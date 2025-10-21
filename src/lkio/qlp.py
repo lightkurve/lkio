@@ -5,54 +5,45 @@ from astropy.wcs import WCS
 
 
 def read_qlp(
-        file = "/Users/nthom/.lightkurve/cache/mastDownload/HLSP/hlsp_qlp_tess_ffi_s0001-0000000183306762_tess_v01_llc/hlsp_qlp_tess_ffi_s0001-0000000183306762_tess_v01_llc.fits",
-        hdu = None, 
-        time = 'TIME',
-        flux = 'KSPSAP_FLUX',
+        file,
+        flux = None,
         time_keys = ['TIME','CADENCENO', 'ORBITID'], 
         data_keys = ['SAP_FLUX','KSPSAP_FLUX','SAP_X','SAP_Y','SAP_BKG','KSPSAP_FLUX_SML','KSPSAP_FLUX_LAG'],
-        data_err_keys = None,
         boolean_keys = [],
         bitwise_keys = ['QUALITY'], 
         ):
     
-    hdu = fits.open(file)
+    if isinstance(file, fits.HDUList):
+        hdu = file
+    elif isinstance(file, str):
+        hdu = fits.open(file)
+    else:
+        warnings.warn('No file provided.')  
 
-
-    '''time_series = ['TIME','CADENCENO', 'ORBITID']
-
-    # Should I assume all error has <name>_ERR?
-    data_series = [('SAP_FLUX', None),
-                    ('KSPSAP_FLUX', 'KSPSAP_FLUX_ERR'),
-                    ('SAP_X',None),
-                    ('SAP_Y', None),
-                    ('SAP_BKG','SAP_BKG_ERR'),
-                    ('KSPSAP_FLUX_SML', None),
-                    ('KSPSAP_FLUX_LAG', None),
-                    ]
-
-    bitwise_series = ['QUALITY'] #Bitwise data can't have uncertainties
-
-    bool_series = []'''
 
     ds = generic_io(
-        hdu = hdu,
+        file = file,
         time_keys = time_keys,
         data_keys=data_keys,
-        data_err_keys=data_err_keys,
         boolean_keys= boolean_keys,
         bitwise_keys = bitwise_keys,
+        close_file=False,
         )
 
     # TODO: does QLP not have the aperture? I don't see it in my test file
     #meta['aperture'] = hdu[2].data
     ds.meta['wcs'] = WCS(hdu[1].header)
-    #
-    if flux != 'FLUX':
-        ds.data_products["FLUX"] = ds.data_products[flux]
+    
+    # QLP changes for extended mission 2 (sector 56+). Now using “DET_FLUX” and “DET_FLUX_ERR” instead of “KSPSAP_FLUX” and “KSPSAP_FLUX_ERR” for the detrended flux and detrended flux error, respectively
+    if flux is None:
+        if "DET_FLUX" in ds.data_products.keys():
+            flux = "DET_FLUX"
+        else:
+            flux = "KSPSAP_FLUX"
+
+    ds.data_products["FLUX"] = ds.data_products[flux]
     ds.meta['FLUX_ORIGIN'] = flux
 
     # TODO: I don't actually see units in the header, except for time?
 
     return ds
-
