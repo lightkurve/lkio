@@ -62,6 +62,7 @@ def read_spoc(
         data_keys=data_keys,
         boolean_keys= boolean_keys,
         bitwise_keys = bitwise_keys,
+        error_syntax = '{key}_ERR',
         close_file = False,
         )
 
@@ -85,7 +86,7 @@ def read_spoc(
     try:
         ds.meta['aperture'] = hdu[2].data & 2 > 0
     except (IndexError, TypeError):
-        ds.meta['aperture'] = np.ones(tpf.data_products['FLUX'].array.shape, dtype=bool)
+        ds.meta['aperture'] = np.ones(ds.data_products['FLUX'].array.shape, dtype=bool)
 
 
     

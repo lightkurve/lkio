@@ -25,6 +25,7 @@ def read_qlp(
         file = file,
         time_keys = time_keys,
         data_keys=data_keys,
+        error_syntax = '{key}_ERR',
         boolean_keys= boolean_keys,
         bitwise_keys = bitwise_keys,
         close_file=False,

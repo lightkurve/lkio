@@ -4,7 +4,7 @@ import numpy as np
 import sys
 sys.path.append('/Users/nthom/TESS_GI/gitNschanch/tessgi/lkdata/src/')
 import lkdata
-
+import fnmatch
 
 
 #sys.path.append(parent_dir_name + "/src")
@@ -15,7 +15,8 @@ def generic_io(
         file,
         time_keys = ['TIME', 'TIMECORR', 'CADENCENO'], 
         data_keys = None,
-        data_err_keys = None,
+        #data_err_keys = None,
+        error_syntax = '{key}_ERR',
         boolean_keys = [],
         bitwise_keys = [], 
         close_file = True,
@@ -99,16 +100,19 @@ def generic_io(
     meta["timemask"] = timemask
     
 
-    if not data_err_keys:
+    #if not data_err_keys:
+    if error_syntax == '{key}_ERR':
         error_columns = [string for string in hdu[1].columns.names if string.endswith('ERR')]
-        data_keys = [item for item in data_keys if item not in error_columns] 
+    elif error_syntax == 'E{key}':
+        error_columns = [string for string in hdu[1].columns.names if string.startswith('E')]
+    data_keys = [item for item in data_keys if item not in error_columns] 
 
 
 
     bws = {}
     for key in bitwise_keys:
         if key in header_keys:
-            bws[key] = lkdata.BitwiseSeries(data = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
+            bws[key] = lkdata.BitwiseSeries(data = np.array(hdu[1].data[key]).astype(int)[timemask],
                 #time_indices = ts,
                 )
 
@@ -130,15 +134,17 @@ def generic_io(
         if key in header_keys:
             d = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask]
             #print(f"{key} dimensions: {d.ndim}")
-            if f"{key}_ERR" in error_columns:
+            key_error = fnmatch.filter(error_columns, f"*{key}*")
+            if len(key_error) > 0:
+            #if f"{key}_ERR" in error_columns:
                 if d.ndim == 1:
                     ds[key] = lkdata.DataSeries(data = d,
-                        uncertainty = np.array(hdu[1].data[f"{key}_ERR"]).byteswap().newbyteorder()[timemask],
+                        uncertainty = np.array(hdu[1].data[key_error[0]]).byteswap().newbyteorder()[timemask],
                         #time_indices = ts,
                         )
                 elif d.ndim == 3:
                     ds[key] = lkdata.DataCube(data = d,
-                        uncertainty = np.array(hdu[1].data[f"{key}_ERR"]).byteswap().newbyteorder()[timemask],
+                        uncertainty = np.array(hdu[1].data[key_error[0]]).byteswap().newbyteorder()[timemask],
                         #time_indices = ts,
                         )
 
