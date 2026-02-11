@@ -6,13 +6,10 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
     "astropy>=6.0.1",
-    "lkdata",
+    "lkdata>=1.0.0",
     "lksearch>=1.2.1",
     "numpy>=1.26.4",
 ]
-
-[tool.uv.sources]
-lkdata = { git = "https://github.com/lightkurve/lkdata.git" }
 
 [build-system]
 requires = ["uv_build"]
