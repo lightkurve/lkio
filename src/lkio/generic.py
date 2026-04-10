@@ -1,22 +1,44 @@
 """Generic read/write functions"""
 import fnmatch
 import warnings
+from typing import Optional, Union, Iterable
+from logging import log
 
 import lkdata
 import numpy as np
 from astropy.io import fits
 
+DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
+
+def get_hdu(file):
+    if isinstance(file, fits.HDUList):
+        hdu = file
+    elif (isinstance(file, str) and file.startswith('s3://')):
+        # Filename is an S3 cloud URI
+        log.debug('Reading file from AWS S3 cloud.')
+        hdu = fits.open(file, use_fsspec=True, fsspec_kwargs={"anon": True})
+    elif isinstance(file, str):
+        hdu = fits.open(file)
+    else:
+        warnings.warn("`file` must be a string or an HDUList.")
+    return hdu
+
+
+def get_header_info(header):
+    info = {}
+    for k in header.keys():
+        info[k] = header[k]
+
 
 def generic_io(
-    file,
-    time_keys=["TIME", "TIMECORR", "CADENCENO"],
-    data_keys=None,
-    # data_err_keys = None,
-    error_syntax="{key}_ERR",
-    boolean_keys=[],
-    bitwise_keys=[],
-    close_file=True,
-):
+    file: Union[str, fits.HDUList],
+    time_keys: Optional[Iterable[str]]=None,
+    data_keys: Optional[Iterable[str]]=None,
+    error_syntax: Optional[Union[str, Iterable[str]]]="{key}_ERR",
+    boolean_keys: Optional[Iterable[str]]=None,
+    bitwise_keys: Optional[Iterable[str]]=None,
+    close_file: Optional[bool]=True,
+) -> lkdata.DataSet:
     """
     Reads in a generic fits file and returns a lkdata.DataSet
 
@@ -25,59 +47,59 @@ def generic_io(
     file : str, astropy.io.fits.HDUList
         if string, the path to the fits file. Alternatively can pass an HDUList
     time_keys : list, optional
-        time data contained in the fits file. These will be used as the time indices for the DataSet. By default ['TIME', 'TIMECORR', 'CADENCENO']
+        time data contained in the fits file. These will be used as the time
+        indices for the DataSet. By default ['TIME', 'TIMECORR', 'CADENCENO']
     data_keys : list, optional
-        series or cube data contained by the fits file. If none ar specified, it will try to just read all data from the header
-    data_err_keys : list, optional
-        series or cube data contained by the fits file. If not specified, will look for data keys with '_ERR', eg, for the data key 'FLUX', it will search for 'FLUX_ERR'
+        series or cube data contained by the fits file. If none are specified,
+        it will try to read all data from the header
+    error_syntax : str or list, optional
+        If not specified, will look for data keys with '_ERR', eg, for the data
+        key 'FLUX', it will search for 'FLUX_ERR'. If a list is given, the
+        number of error keys must be the same as data keys.
     boolean_keys : list, optional
-        boolean series or cube data contained by the fits file, by default []
+        boolean series or cube data contained by the fits file, by default None
     bitwise_keys : list, optional
-        Bitwise series or cube data,
+        Bitwise series or cube data, by default None
 
     Returns
     -------
     ds
         lkdata.DataSet containing containing Series, Cubes, and metadata
     """
-    if isinstance(file, fits.HDUList):
-        hdu = file
-    elif isinstance(file, str):
-        hdu = fits.open(file)
-    else:
-        warnings.warn("No file provided.")
+
+    time_keys = time_keys or []
+    data_keys = data_keys or []
+    boolean_keys = boolean_keys or []
+    bitwise_keys = bitwise_keys or []
+
+    hdul = get_hdu(file)
 
     # Collect meta data from all extensions
-    meta = {}
     # Get information from the primary header
-    for i in range(len(hdu)):
-        temp_meta = {}
-        head = hdu[i].header
-        for k in head.keys():
-            temp_meta[k] = head[k]
-        meta[f"{temp_meta['EXTNAME']}"] = temp_meta
+    meta = {f"{hdu.header['EXTNAME']}": hdu.header
+            for hdu in hdul
+            if isinstance(hdu, fits.PrimaryHDU)}
 
-    # If not specifics are provided, try to just read all data from the header
-    header_keys = hdu[1].columns.names.copy()
+    # If no specifics are provided, try to just read all data from the header
+    header_keys = hdul[1].columns.names.copy()
 
     if not data_keys:
         data_keys = header_keys
         data_keys = [k for k in data_keys if k not in bitwise_keys]
         data_keys = [k for k in data_keys if k not in boolean_keys]
         data_keys = [k for k in data_keys if k not in time_keys]
-
     else:
         data_keys = np.atleast_1d(data_keys)
 
     unit_dict = {}
-    for key in [k for k in data_keys if k in hdu[1].data.columns.names]:
+    for key in [k for k in data_keys if k in hdul[1].data.columns.names]:
         datakeys = [
-            hdu[1].header["TTYPE*"][i] for i in range(len(hdu[1].header["TTYPE*"]))
+            hdul[1].header["TTYPE*"][i] for i in range(len(hdul[1].header["TTYPE*"]))
         ]
         indexloc = datakeys.index(key) + 1
 
         try:
-            unit_dict[key] = hdu[1].header[f"TUNIT{indexloc}"]
+            unit_dict[key] = hdul[1].header[f"TUNIT{indexloc}"]
         except KeyError:
             continue
     meta["units"] = unit_dict
@@ -85,7 +107,7 @@ def generic_io(
     ts = {}
     for key in time_keys:
         if key in header_keys:
-            ts[key] = hdu[1].data[key].byteswap().newbyteorder()
+            ts[key] = hdul[1].data[key].byteswap().newbyteorder()
 
     # Some data products can have NaN time values. This is not allowed by DataSet, so remove them
     timemask = np.where(
@@ -97,11 +119,11 @@ def generic_io(
     # if not data_err_keys:
     if error_syntax == "{key}_ERR":
         error_columns = [
-            string for string in hdu[1].columns.names if string.endswith("ERR")
+            string for string in hdul[1].columns.names if string.endswith("ERR")
         ]
     elif error_syntax == "E{key}":
         error_columns = [
-            string for string in hdu[1].columns.names if string.startswith("E")
+            string for string in hdul[1].columns.names if string.startswith("E")
         ]
     data_keys = [item for item in data_keys if item not in error_columns]
 
@@ -109,7 +131,7 @@ def generic_io(
     for key in bitwise_keys:
         if key in header_keys:
             bws[key] = lkdata.BitwiseSeries(
-                data=np.array(hdu[1].data[key]).astype(int)[timemask],
+                data=np.array(hdul[1].data[key]).astype(int)[timemask],
                 # time_indices = ts,
             )
 
@@ -117,14 +139,14 @@ def generic_io(
     for key in boolean_keys:
         if key in header_keys:
             bos[key] = lkdata.BoolSeries(
-                data=np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
+                data=np.array(hdul[1].data[key]).byteswap().newbyteorder()[timemask],
                 # time_indices = ts,
             )
 
     ds = {}
     for key in data_keys:
         if key in header_keys:
-            d = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask]
+            d = np.array(hdul[1].data[key]).byteswap().newbyteorder()[timemask]
             # print(f"{key} dimensions: {d.ndim}")
             key_error = fnmatch.filter(error_columns, f"*{key}*")
             if len(key_error) > 0:
@@ -132,7 +154,7 @@ def generic_io(
                 if d.ndim == 1:
                     ds[key] = lkdata.DataSeries(
                         data=d,
-                        uncertainty=np.array(hdu[1].data[key_error[0]])
+                        uncertainty=np.array(hdul[1].data[key_error[0]])
                         .byteswap()
                         .newbyteorder()[timemask],
                         # time_indices = ts,
@@ -140,7 +162,7 @@ def generic_io(
                 elif d.ndim == 3:
                     ds[key] = lkdata.DataCube(
                         data=d,
-                        uncertainty=np.array(hdu[1].data[key_error[0]])
+                        uncertainty=np.array(hdul[1].data[key_error[0]])
                         .byteswap()
                         .newbyteorder()[timemask],
                         # time_indices = ts,
@@ -149,14 +171,14 @@ def generic_io(
             else:
                 if d.ndim == 1:
                     ds[key] = lkdata.DataSeries(
-                        data=np.array(hdu[1].data[key])
+                        data=np.array(hdul[1].data[key])
                         .byteswap()
                         .newbyteorder()[timemask],
                         # time_indices = ts,
                     )
                 elif d.ndim == 3:
                     ds[key] = lkdata.DataCube(
-                        data=np.array(hdu[1].data[key])
+                        data=np.array(hdul[1].data[key])
                         .byteswap()
                         .newbyteorder()[timemask],
                         # time_indices = ts,
@@ -171,5 +193,5 @@ def generic_io(
     )
 
     if close_file:
-        hdu.close()
+        hdul.close()
     return dset  # aperture and wcs added in specific data product readers
