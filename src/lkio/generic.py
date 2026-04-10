@@ -1,27 +1,22 @@
-from astropy.io import fits
-import warnings
-import numpy as np
-import sys
-sys.path.append('/Users/nthom/TESS_GI/gitNschanch/tessgi/lkdata/src/')
-import lkdata
+"""Generic read/write functions"""
 import fnmatch
+import warnings
 
-
-#sys.path.append(parent_dir_name + "/src")
-from lkdata import DataSeries,BoolSeries, BitwiseSeries, DataSet
+import lkdata
+import numpy as np
+from astropy.io import fits
 
 
 def generic_io(
-        file,
-        time_keys = ['TIME', 'TIMECORR', 'CADENCENO'], 
-        data_keys = None,
-        #data_err_keys = None,
-        error_syntax = '{key}_ERR',
-        boolean_keys = [],
-        bitwise_keys = [], 
-        close_file = True,
-
-    ):
+    file,
+    time_keys=["TIME", "TIMECORR", "CADENCENO"],
+    data_keys=None,
+    # data_err_keys = None,
+    error_syntax="{key}_ERR",
+    boolean_keys=[],
+    bitwise_keys=[],
+    close_file=True,
+):
     """
     Reads in a generic fits file and returns a lkdata.DataSet
 
@@ -50,8 +45,7 @@ def generic_io(
     elif isinstance(file, str):
         hdu = fits.open(file)
     else:
-        warnings.warn('No file provided.')
-
+        warnings.warn("No file provided.")
 
     # Collect meta data from all extensions
     meta = {}
@@ -62,9 +56,6 @@ def generic_io(
         for k in head.keys():
             temp_meta[k] = head[k]
         meta[f"{temp_meta['EXTNAME']}"] = temp_meta
-
-
-
 
     # If not specifics are provided, try to just read all data from the header
     header_keys = hdu[1].columns.names.copy()
@@ -77,14 +68,16 @@ def generic_io(
 
     else:
         data_keys = np.atleast_1d(data_keys)
-    
+
     unit_dict = {}
-    for key in [k for k in data_keys if k in hdu[1].data.columns.names] :
-        datakeys = [hdu[1].header['TTYPE*'][i] for i in range(len(hdu[1].header['TTYPE*']))]
+    for key in [k for k in data_keys if k in hdu[1].data.columns.names]:
+        datakeys = [
+            hdu[1].header["TTYPE*"][i] for i in range(len(hdu[1].header["TTYPE*"]))
+        ]
         indexloc = datakeys.index(key) + 1
 
         try:
-            unit_dict[key] = hdu[1].header[f'TUNIT{indexloc}']
+            unit_dict[key] = hdu[1].header[f"TUNIT{indexloc}"]
         except KeyError:
             continue
     meta["units"] = unit_dict
@@ -95,82 +88,88 @@ def generic_io(
             ts[key] = hdu[1].data[key].byteswap().newbyteorder()
 
     # Some data products can have NaN time values. This is not allowed by DataSet, so remove them
-    timemask = np.where(~np.isnan(np.array(list(ts.values()))).any(axis=0)) # Valid times
+    timemask = np.where(
+        ~np.isnan(np.array(list(ts.values()))).any(axis=0)
+    )  # Valid times
     ts = {key: value[timemask] for key, value in ts.items()}
     meta["timemask"] = timemask
-    
 
-    #if not data_err_keys:
-    if error_syntax == '{key}_ERR':
-        error_columns = [string for string in hdu[1].columns.names if string.endswith('ERR')]
-    elif error_syntax == 'E{key}':
-        error_columns = [string for string in hdu[1].columns.names if string.startswith('E')]
-    data_keys = [item for item in data_keys if item not in error_columns] 
-
-
+    # if not data_err_keys:
+    if error_syntax == "{key}_ERR":
+        error_columns = [
+            string for string in hdu[1].columns.names if string.endswith("ERR")
+        ]
+    elif error_syntax == "E{key}":
+        error_columns = [
+            string for string in hdu[1].columns.names if string.startswith("E")
+        ]
+    data_keys = [item for item in data_keys if item not in error_columns]
 
     bws = {}
     for key in bitwise_keys:
         if key in header_keys:
-            bws[key] = lkdata.BitwiseSeries(data = np.array(hdu[1].data[key]).astype(int)[timemask],
-                #time_indices = ts,
-                )
-
-
+            bws[key] = lkdata.BitwiseSeries(
+                data=np.array(hdu[1].data[key]).astype(int)[timemask],
+                # time_indices = ts,
+            )
 
     bos = {}
     for key in boolean_keys:
         if key in header_keys:
-            bos[key] = lkdata.BoolSeries(data = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
-                #time_indices = ts,
-            )  
-
-
-
-
+            bos[key] = lkdata.BoolSeries(
+                data=np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
+                # time_indices = ts,
+            )
 
     ds = {}
     for key in data_keys:
         if key in header_keys:
             d = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask]
-            #print(f"{key} dimensions: {d.ndim}")
+            # print(f"{key} dimensions: {d.ndim}")
             key_error = fnmatch.filter(error_columns, f"*{key}*")
             if len(key_error) > 0:
-            #if f"{key}_ERR" in error_columns:
+                # if f"{key}_ERR" in error_columns:
                 if d.ndim == 1:
-                    ds[key] = lkdata.DataSeries(data = d,
-                        uncertainty = np.array(hdu[1].data[key_error[0]]).byteswap().newbyteorder()[timemask],
-                        #time_indices = ts,
-                        )
+                    ds[key] = lkdata.DataSeries(
+                        data=d,
+                        uncertainty=np.array(hdu[1].data[key_error[0]])
+                        .byteswap()
+                        .newbyteorder()[timemask],
+                        # time_indices = ts,
+                    )
                 elif d.ndim == 3:
-                    ds[key] = lkdata.DataCube(data = d,
-                        uncertainty = np.array(hdu[1].data[key_error[0]]).byteswap().newbyteorder()[timemask],
-                        #time_indices = ts,
-                        )
+                    ds[key] = lkdata.DataCube(
+                        data=d,
+                        uncertainty=np.array(hdu[1].data[key_error[0]])
+                        .byteswap()
+                        .newbyteorder()[timemask],
+                        # time_indices = ts,
+                    )
 
             else:
                 if d.ndim == 1:
-                    ds[key] = lkdata.DataSeries(data = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
-                        #time_indices = ts,        
-                        )
+                    ds[key] = lkdata.DataSeries(
+                        data=np.array(hdu[1].data[key])
+                        .byteswap()
+                        .newbyteorder()[timemask],
+                        # time_indices = ts,
+                    )
                 elif d.ndim == 3:
-                    ds[key] = lkdata.DataCube(data = np.array(hdu[1].data[key]).byteswap().newbyteorder()[timemask],
-                        #time_indices = ts,        
-                        )
+                    ds[key] = lkdata.DataCube(
+                        data=np.array(hdu[1].data[key])
+                        .byteswap()
+                        .newbyteorder()[timemask],
+                        # time_indices = ts,
+                    )
 
-    
-   
-
-
-    dset = lkdata.DataSet(data_products=ds, 
+    dset = lkdata.DataSet(
+        data_products=ds,
         bool_products=bos,
         bitwise_products=bws,
-        time_indices = ts,
-        meta = meta,
-        )
-    
-    
-    
+        time_indices=ts,
+        meta=meta,
+    )
+
     if close_file:
         hdu.close()
-    return dset # aperture and wcs added in specific data product readers
+    return dset  # aperture and wcs added in specific data product readers
