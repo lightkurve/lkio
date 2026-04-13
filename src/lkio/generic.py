@@ -1,43 +1,53 @@
 """Generic read/write functions"""
+
 import fnmatch
-import warnings
 from typing import Optional, Union, Iterable
-from logging import log
+import logging
 
 import lkdata
 import numpy as np
 from astropy.io import fits
 
+log = logging.getLogger(__name__)
+
 DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
 
+
 def get_hdu(file):
+    """Return the HDUList associated with the input"""
+    assert isinstance(file, (fits.HDUList, str)), (
+        "`file` must be a string or an HDUList."
+    )
     if isinstance(file, fits.HDUList):
         hdu = file
-    elif (isinstance(file, str) and file.startswith('s3://')):
+    elif file.startswith("s3://"):
         # Filename is an S3 cloud URI
-        log.debug('Reading file from AWS S3 cloud.')
+        log.debug("Reading file from AWS S3 cloud.")
         hdu = fits.open(file, use_fsspec=True, fsspec_kwargs={"anon": True})
-    elif isinstance(file, str):
-        hdu = fits.open(file)
     else:
-        warnings.warn("`file` must be a string or an HDUList.")
+        hdu = fits.open(file)
+
     return hdu
 
 
-def get_header_info(header):
-    info = {}
-    for k in header.keys():
-        info[k] = header[k]
+def make_keys_set(keys) -> set:
+    """Return a set of keys"""
+    keys = keys or []
+    return set(np.atleast_1d(np.array(keys)))
+
+
+def read_primary_HDU(ext, data_keys):
+    return
 
 
 def generic_io(
     file: Union[str, fits.HDUList],
-    time_keys: Optional[Iterable[str]]=None,
-    data_keys: Optional[Iterable[str]]=None,
-    error_syntax: Optional[Union[str, Iterable[str]]]="{key}_ERR",
-    boolean_keys: Optional[Iterable[str]]=None,
-    bitwise_keys: Optional[Iterable[str]]=None,
-    close_file: Optional[bool]=True,
+    time_keys: Optional[Iterable[str]] = None,
+    data_keys: Optional[Iterable[str]] = None,
+    error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
+    boolean_keys: Optional[Iterable[str]] = None,
+    bitwise_keys: Optional[Iterable[str]] = None,
+    close_file: Optional[bool] = True,
 ) -> lkdata.DataSet:
     """
     Reads in a generic fits file and returns a lkdata.DataSet
@@ -67,29 +77,32 @@ def generic_io(
         lkdata.DataSet containing containing Series, Cubes, and metadata
     """
 
-    time_keys = time_keys or []
-    data_keys = data_keys or []
-    boolean_keys = boolean_keys or []
-    bitwise_keys = bitwise_keys or []
+    time_keys = make_keys_set(time_keys)
+    data_keys = make_keys_set(data_keys)
+    boolean_keys = make_keys_set(boolean_keys)
+    bitwise_keys = make_keys_set(bitwise_keys)
 
     hdul = get_hdu(file)
 
     # Collect meta data from all extensions
     # Get information from the primary header
-    meta = {f"{hdu.header['EXTNAME']}": hdu.header
-            for hdu in hdul
-            if isinstance(hdu, fits.PrimaryHDU)}
+    meta = {
+        f"{hdu.header['EXTNAME']}": hdu.header
+        for hdu in hdul
+        if isinstance(hdu, (fits.PrimaryHDU, fits.TableHDU, fits.ImageHDU))
+    }
 
     # If no specifics are provided, try to just read all data from the header
-    header_keys = hdul[1].columns.names.copy()
+    ext = 1  # assuming primary hdu is extension 1...
+    header_keys = hdul[ext].columns.names.copy()
 
     if not data_keys:
-        data_keys = header_keys
-        data_keys = [k for k in data_keys if k not in bitwise_keys]
-        data_keys = [k for k in data_keys if k not in boolean_keys]
-        data_keys = [k for k in data_keys if k not in time_keys]
-    else:
-        data_keys = np.atleast_1d(data_keys)
+        data_keys = [
+            k
+            for k in hdul[ext].columns.names
+            if k not in set(bitwise_keys) + set(boolean_keys) + set(time_keys)
+        ]
+    data_keys = np.atleast_1d(np.array(data_keys))
 
     unit_dict = {}
     for key in [k for k in data_keys if k in hdul[1].data.columns.names]:
@@ -99,7 +112,7 @@ def generic_io(
         indexloc = datakeys.index(key) + 1
 
         try:
-            unit_dict[key] = hdul[1].header[f"TUNIT{indexloc}"]
+            unit_dict[key] = hdul[ext].header[f"TUNIT{indexloc}"]
         except KeyError:
             continue
     meta["units"] = unit_dict
@@ -107,7 +120,7 @@ def generic_io(
     ts = {}
     for key in time_keys:
         if key in header_keys:
-            ts[key] = hdul[1].data[key].byteswap().newbyteorder()
+            ts[key] = hdul[ext].data[key].byteswap().newbyteorder()
 
     # Some data products can have NaN time values. This is not allowed by DataSet, so remove them
     timemask = np.where(
@@ -131,7 +144,7 @@ def generic_io(
     for key in bitwise_keys:
         if key in header_keys:
             bws[key] = lkdata.BitwiseSeries(
-                data=np.array(hdul[1].data[key]).astype(int)[timemask],
+                data=np.array(hdul[ext].data[key]).astype(int)[timemask],
                 # time_indices = ts,
             )
 
