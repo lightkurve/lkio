@@ -11,9 +11,11 @@ from astropy.io import fits
 log = logging.getLogger(__name__)
 
 DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
+LK_CLASSES = {1: lkdata.DataSeries,
+            2: lkdata.DataSeriesCollection,
+            3: lkdata.DataCube}
 
-
-def get_hdu(file):
+def get_hdu(file) -> fits.HDUList:
     """Return the HDUList associated with the input"""
     assert isinstance(file, (fits.HDUList, str)), (
         "`file` must be a string or an HDUList."
@@ -34,6 +36,20 @@ def make_keys_set(keys) -> set:
     """Return a set of keys"""
     keys = keys or []
     return set(np.atleast_1d(np.array(keys)))
+
+
+def get_data_units(data_keys, hdu) -> dict:
+    unit_dict = {}
+    for key in data_keys:
+        datakeys = list(hdu.header["TTYPE*"])
+        indexloc = datakeys.index(key) + 1
+
+        try:
+            unit_dict[key] = hdu.header[f"TUNIT{indexloc}"]
+        except KeyError:
+            # no units provided
+            continue
+    return unit_dict
 
 
 def read_primary_HDU(ext, data_keys):
@@ -78,7 +94,6 @@ def generic_io(
     """
 
     time_keys = make_keys_set(time_keys)
-    data_keys = make_keys_set(data_keys)
     boolean_keys = make_keys_set(boolean_keys)
     bitwise_keys = make_keys_set(bitwise_keys)
 
@@ -92,119 +107,83 @@ def generic_io(
         if isinstance(hdu, (fits.PrimaryHDU, fits.TableHDU, fits.ImageHDU))
     }
 
+    # TODO: Revise following assumption
     # If no specifics are provided, try to just read all data from the header
-    ext = 1  # assuming primary hdu is extension 1...
-    header_keys = hdul[ext].columns.names.copy()
+    # of the first extension
+    ext = 1
+    hdu = hdul[ext]
+    header_keys = hdu.columns.names.copy()
+
+    # if not data_err_keys:
+    if error_syntax == "{key}_ERR":
+        error_keys = [
+            string for string in hdu.columns.names if string.endswith("_ERR")
+        ]
+    elif error_syntax == "E{key}":
+        error_keys = [
+            string for string in hdu.columns.names if string.startswith("E")
+        ]
+    else:
+        error_keys = []
+    error_keys = set(error_keys)
 
     if not data_keys:
         data_keys = [
             k
-            for k in hdul[ext].columns.names
-            if k not in set(bitwise_keys) + set(boolean_keys) + set(time_keys)
+            for k in hdu.columns.names
+            if k not in (bitwise_keys | boolean_keys | time_keys | error_keys)
         ]
-    data_keys = np.atleast_1d(np.array(data_keys))
+    data_keys = make_keys_set(data_keys)
+    data_keys = data_keys.intersection(hdu.columns.names)
 
-    unit_dict = {}
-    for key in [k for k in data_keys if k in hdul[1].data.columns.names]:
-        datakeys = [
-            hdul[1].header["TTYPE*"][i] for i in range(len(hdul[1].header["TTYPE*"]))
-        ]
-        indexloc = datakeys.index(key) + 1
+    meta["units"] = get_data_units(data_keys, hdu)
 
-        try:
-            unit_dict[key] = hdul[ext].header[f"TUNIT{indexloc}"]
-        except KeyError:
-            continue
-    meta["units"] = unit_dict
+    times_dict = {key: hdu.data[key].byteswap().newbyteorder()
+                  for key in (time_keys & header_keys)}
 
-    ts = {}
-    for key in time_keys:
-        if key in header_keys:
-            ts[key] = hdul[ext].data[key].byteswap().newbyteorder()
-
-    # Some data products can have NaN time values. This is not allowed by DataSet, so remove them
+    # lkv3 products do not allow NaN time values
     timemask = np.where(
-        ~np.isnan(np.array(list(ts.values()))).any(axis=0)
+        ~np.isnan(np.array(list(times_dict.values()))).any(axis=0)
     )  # Valid times
-    ts = {key: value[timemask] for key, value in ts.items()}
     meta["timemask"] = timemask
+    times_dict = {key: value[timemask] for key, value in times_dict.items()}
 
-    # if not data_err_keys:
-    if error_syntax == "{key}_ERR":
-        error_columns = [
-            string for string in hdul[1].columns.names if string.endswith("ERR")
-        ]
-    elif error_syntax == "E{key}":
-        error_columns = [
-            string for string in hdul[1].columns.names if string.startswith("E")
-        ]
-    data_keys = [item for item in data_keys if item not in error_columns]
+    bitwise_dict = {key: lkdata.BitwiseSeries(
+        data=np.array(hdu.data[key]).astype(int)[timemask])
+                    for key in (bitwise_keys & header_keys)}
 
-    bws = {}
-    for key in bitwise_keys:
-        if key in header_keys:
-            bws[key] = lkdata.BitwiseSeries(
-                data=np.array(hdul[ext].data[key]).astype(int)[timemask],
-                # time_indices = ts,
+    bool_dict = {key: lkdata.BoolSeries(
+        data=np.array(hdu.data[key]).byteswap().newbyteorder()[timemask])
+                 for key in (boolean_keys & header_keys)}
+
+    data_series_dict = {}
+    for key in (data_keys & header_keys):
+        col_data = np.array(hdu.data[key]).byteswap().newbyteorder()[timemask]
+        key_error = fnmatch.filter(error_keys, f"*{key}*")
+
+        if len(key_error) > 0:
+            data_series_dict[key] = LK_CLASSES[col_data.ndim](
+                data=col_data,
+                uncertainty=np.array(hdu.data[key_error[0]])
+                .byteswap()
+                .newbyteorder()[timemask],
             )
 
-    bos = {}
-    for key in boolean_keys:
-        if key in header_keys:
-            bos[key] = lkdata.BoolSeries(
-                data=np.array(hdul[1].data[key]).byteswap().newbyteorder()[timemask],
-                # time_indices = ts,
+        else:
+            data_series_dict[key] = LK_CLASSES[col_data.ndim](
+                data=np.array(hdu.data[key])
+                .byteswap()
+                .newbyteorder()[timemask],
             )
-
-    ds = {}
-    for key in data_keys:
-        if key in header_keys:
-            d = np.array(hdul[1].data[key]).byteswap().newbyteorder()[timemask]
-            # print(f"{key} dimensions: {d.ndim}")
-            key_error = fnmatch.filter(error_columns, f"*{key}*")
-            if len(key_error) > 0:
-                # if f"{key}_ERR" in error_columns:
-                if d.ndim == 1:
-                    ds[key] = lkdata.DataSeries(
-                        data=d,
-                        uncertainty=np.array(hdul[1].data[key_error[0]])
-                        .byteswap()
-                        .newbyteorder()[timemask],
-                        # time_indices = ts,
-                    )
-                elif d.ndim == 3:
-                    ds[key] = lkdata.DataCube(
-                        data=d,
-                        uncertainty=np.array(hdul[1].data[key_error[0]])
-                        .byteswap()
-                        .newbyteorder()[timemask],
-                        # time_indices = ts,
-                    )
-
-            else:
-                if d.ndim == 1:
-                    ds[key] = lkdata.DataSeries(
-                        data=np.array(hdul[1].data[key])
-                        .byteswap()
-                        .newbyteorder()[timemask],
-                        # time_indices = ts,
-                    )
-                elif d.ndim == 3:
-                    ds[key] = lkdata.DataCube(
-                        data=np.array(hdul[1].data[key])
-                        .byteswap()
-                        .newbyteorder()[timemask],
-                        # time_indices = ts,
-                    )
 
     dset = lkdata.DataSet(
-        data_products=ds,
-        bool_products=bos,
-        bitwise_products=bws,
-        time_indices=ts,
+        data_products=data_series_dict,
+        bool_products=bool_dict,
+        bitwise_products=bitwise_dict,
+        time_indices=times_dict,
         meta=meta,
     )
 
     if close_file:
         hdul.close()
-    return dset  # aperture and wcs added in specific data product readers
+    return dset 
