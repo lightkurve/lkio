@@ -1518,15 +1518,11 @@ wheels = [
 
 [[package]]
 name = "lkdata"
-version = "1.0.0"
-source = { registry = "https://pypi.org/simple" }
+version = "1.0.1"
+source = { git = "https://github.com/lightkurve/lkdata#b2fccb5b0684dbdf4017eb89b9ed536f4ce149c4" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas", extra = ["output-formatting", "plot"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/11/79/25c7f0dff0455926800ee71683bbce24c539301944c17e6098e710d78065/lkdata-1.0.0.tar.gz", hash = "sha256:2130dfe42b63fd0ec08d26e51d2c4876b987fe8e09bea0b5c2884aaf0f3a1b3e", size = 73619 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/34/2c/7f127ab2547e26da4f6a372431e6c58069cb610198dabc16c740926122dc/lkdata-1.0.0-py3-none-any.whl", hash = "sha256:6e5b7d54384cea6e984a87d6c7069a9325a4595e7baea1764e46741691666212", size = 76877 },
 ]
 
 [[package]]
@@ -1552,7 +1548,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "astropy", specifier = ">=6.0.1" },
-    { name = "lkdata", specifier = ">=1.0.0" },
+    { name = "lkdata", git = "https://github.com/lightkurve/lkdata" },
     { name = "lksearch", specifier = ">=1.2.1" },
     { name = "numpy", specifier = ">=1.26.4" },
 ]
