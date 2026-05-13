@@ -1,6 +1,6 @@
 from astropy.io import fits
 
-from .generic import generic_io
+from .generic import read_generic
 from astropy.wcs import WCS
 
 
@@ -21,7 +21,7 @@ def read_qlp(
         warnings.warn('No file provided.')  
 
 
-    ds = generic_io(
+    ds = read_generic(
         file = file,
         time_keys = time_keys,
         data_keys=data_keys,

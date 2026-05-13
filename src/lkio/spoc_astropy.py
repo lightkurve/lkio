@@ -2,7 +2,7 @@ from astropy.io import fits
 import sys, os
 #parent_dir_name = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath('lkdata'))))
 import lkdata
-from .generic import generic_io
+from .generic import read_generic
 from astropy.wcs import WCS
 import warnings
 from .utils import load_cosmicray_extension
@@ -56,7 +56,7 @@ def read_spoc(
         warnings.warn('No file provided.')
 
 
-    ds = generic_io(
+    ds = read_generic(
         file = hdu,
         time_keys = time_keys,
         data_keys=data_keys,

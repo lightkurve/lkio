@@ -3,6 +3,7 @@
 import fnmatch
 from typing import Optional, Union, Iterable
 import logging
+import pathlib
 
 import lkdata
 import numpy as np
@@ -94,40 +95,6 @@ def get_data_units(data_keys, hdu) -> dict:
     return unit_dict
 
 
-def read_table_HDU(hdu):
-    header_keys = set(hdu.columns.names.copy())
-    # if not data_err_keys:
-    if error_syntax == "{key}_ERR":
-        error_keys = set(
-            [string for string in hdu.columns.names if string.endswith("_ERR")]
-        )
-    elif error_syntax == "E{key}":
-        error_keys = set(
-            [string for string in hdu.columns.names if string.startswith("E")]
-        )
-    else:
-        error_keys = set()
-    if not data_keys:
-        data_keys = [
-            k
-            for k in hdu.columns.names
-            if k not in (bitwise_keys | boolean_keys | time_keys | error_keys)
-        ]
-    data_keys = make_keys_set(data_keys)
-    data_keys = data_keys.intersection(hdu.columns.names)
-    times_dict = {
-        key: hdu.data[key].byteswap().newbyteorder()
-        for key in (time_keys & header_keys)
-    }
-
-    # lkv3 products do not allow NaN time values
-    timemask = np.where(
-        ~np.isnan(np.array(list(times_dict.values()))).any(axis=0)
-    )  # Valid times
-    meta["timemask"] = timemask
-    times_dict = {key: value[timemask] for key, value in times_dict.items()}
-
-
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
     col_data = np.array(hdu.data).byteswap().newbyteorder()
@@ -135,13 +102,12 @@ def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
         [col_data],
         nrow=col_data.shape[0],
         ncol=col_data.shape[1],
-        **meta,
     )
-    dset = lkdata.DataSet(dcube)
+    dset = lkdata.DataSet(dcube, meta=meta)
     return dset
 
 
-def generic_io(
+def read_generic(
     file: Union[str, fits.HDUList],
     ext: int = 1,
     time_keys: Optional[Iterable[str]] = None,
@@ -207,8 +173,6 @@ def read_table_hdu(
     time_keys, data_keys, error_syntax, boolean_keys, bitwise_keys, hdu, meta
 ):
     header_keys = set(hdu.columns.names.copy())
-    col_data = hdu.data["baseline"]
-    # if not data_err_keys:
     # TODO: What happens with an error data length mismatch
     if error_syntax == "{key}_ERR":
         error_keys = set(
@@ -252,13 +216,11 @@ def read_table_hdu(
         key: np.array(hdu.data[key]).byteswap().newbyteorder()[timemask]
         for key in (boolean_keys & header_keys)
     }
-    col_data = hdu.data["baseline"]
     data_series_dict = {}
     for key in data_keys & header_keys:
         col_data = hdu.data[key]
         col_data = col_data.byteswap().newbyteorder()
         col_data = np.array(col_data)[timemask]
-        # col_data = np.array(hdu.data[key]).byteswap().newbyteorder()[timemask]
         key_error = fnmatch.filter(error_keys, f"*{key}*")
 
         if len(key_error) > 0:
@@ -282,3 +244,233 @@ def read_table_hdu(
         meta=meta,
     )
     return dset
+
+
+# ── Write ──────────────────────────────────────────────────────────────────
+
+
+def _fits_format(dtype) -> str:
+    """Map a numpy dtype to a FITS column format code."""
+    dtype = np.dtype(dtype)
+    if np.issubdtype(dtype, np.float64):
+        return "D"
+    if np.issubdtype(dtype, np.float32):
+        return "E"
+    if np.issubdtype(dtype, np.signedinteger):
+        return {8: "K", 4: "J", 2: "I", 1: "B"}.get(dtype.itemsize, "J")
+    if np.issubdtype(dtype, np.unsignedinteger):
+        return "J"
+    if np.issubdtype(dtype, np.bool_):
+        return "L"
+    return "D"
+
+
+def _build_primary_header(meta_val) -> fits.Header:
+    """Return a fits.Header built from a dict or an existing Header."""
+    if isinstance(meta_val, fits.Header):
+        return meta_val.copy()
+    header = fits.Header()
+    if not isinstance(meta_val, dict):
+        return header
+    for key, val in meta_val.items():
+        if not key or key in {"COMMENT", "HISTORY", "END"} or key.startswith("_"):
+            continue
+        if not isinstance(val, (bool, int, float, str)):
+            continue
+        try:
+            header[key] = val
+        except Exception:
+            pass
+    return header
+
+
+def _is_image_dataset(dataset: lkdata.DataSet) -> bool:
+    """True when the DataSet should be written as image HDU(s).
+
+    Criteria: ntime == 1, every data product is a DataCube, every bool
+    product is a BoolCube, and there are no bitwise products.
+    """
+    if dataset.ntime != 1:
+        return False
+    if dataset.bitwise_products:
+        return False
+    if not dataset.data_products and not dataset.bool_products:
+        return False
+    for p in dataset.data_products.values():
+        if not isinstance(p, lkdata.DataCube):
+            return False
+    for p in dataset.bool_products.values():
+        if not isinstance(p, lkdata.BoolCube):
+            return False
+    return True
+
+
+def write_fits(
+    dataset: lkdata.DataSet,
+    file: Union[str, pathlib.Path],
+    ext_name: str = "LIGHTCURVE",
+    overwrite: bool = False,
+) -> None:
+    """Write a DataSet to a FITS file.
+
+    **Image DataSets** (``ntime == 1``, all products are DataCube /
+    BoolCube, no bitwise products) are written as image HDUs:
+
+    * Single DataCube → ``PrimaryHDU`` with the 2-D array as data.
+    * Multiple cubes → empty ``PrimaryHDU`` plus one ``ImageHDU`` per cube,
+      named by the product key.  BoolCube products are written last as
+      integer (0/1) image extensions.
+
+    **All other DataSets** are written as a two-HDU file: a ``PrimaryHDU``
+    (populated from ``dataset.meta['PRIMARY']`` when present) and a
+    ``BinTableHDU`` named *ext_name* containing time-index columns, data
+    products with their uncertainties, bitwise products, and bool products.
+
+    Parameters
+    ----------
+    dataset : lkdata.DataSet
+        DataSet to serialise.
+    file : str or Path
+        Destination file path.
+    ext_name : str, optional
+        EXTNAME for the binary table extension, by default "LIGHTCURVE".
+        Ignored for image DataSets.
+    overwrite : bool, optional
+        Overwrite an existing file, by default False.
+    """
+    meta = getattr(dataset, "meta", None) or {}
+    units: dict = meta.get("units", {}) if isinstance(meta, dict) else {}
+    primary_header = _build_primary_header(meta.get("PRIMARY", {}))
+
+    # ── Image path ─────────────────────────────────────────────────────────
+    if _is_image_dataset(dataset):
+        data_cubes = [
+            (key, np.array(p.array)[0])
+            for key, p in dataset.data_products.items()
+        ]
+        bool_cubes = [
+            (key, np.array(p.array)[0].astype(np.int32))
+            for key, p in dataset.bool_products.items()
+        ]
+        all_images = data_cubes + bool_cubes
+
+        if len(all_images) == 1:
+            key, arr2d = all_images[0]
+            hdul = fits.HDUList([fits.PrimaryHDU(data=arr2d, header=primary_header)])
+        else:
+            hdus: list = [fits.PrimaryHDU(header=primary_header)]
+            for key, arr2d in all_images:
+                ext_header = _build_primary_header(meta.get(key, {}))
+                hdus.append(fits.ImageHDU(data=arr2d, header=ext_header, name=key))
+            hdul = fits.HDUList(hdus)
+
+        hdul.writeto(file, overwrite=overwrite)
+        return
+
+    # ── BinTable path ──────────────────────────────────────────────────────
+    primary_hdu = fits.PrimaryHDU(header=primary_header)
+
+    # ── Build table columns ────────────────────────────────────────────────
+    columns: list = []
+
+    # Time-index columns (all MultiIndex levels except the default integer sequence)
+    index_df = dataset.index.to_frame(index=False)
+    for col_name in index_df.columns:
+        if col_name == "time_index":
+            continue
+        arr = index_df[col_name].to_numpy()
+        columns.append(
+            fits.Column(
+                name=col_name,
+                format=_fits_format(arr.dtype),
+                array=arr,
+                unit=units.get(col_name),
+            )
+        )
+
+    # Data product columns
+    for key, product in dataset.data_products.items():
+        arr = np.array(product.array)
+        unit = units.get(key)
+
+        if arr.ndim == 1:
+            columns.append(
+                fits.Column(name=key, format=_fits_format(arr.dtype), array=arr, unit=unit)
+            )
+            unc = getattr(product, "uncertainty", None)
+            if unc is not None and bool(unc):
+                err = np.array(unc.array)
+                columns.append(
+                    fits.Column(
+                        name=f"{key}_ERR",
+                        format=_fits_format(err.dtype),
+                        array=err,
+                        unit=unit,
+                    )
+                )
+
+        elif arr.ndim == 3:
+            ntime, nrow, ncol = arr.shape
+            n_pix = nrow * ncol
+            fmt = f"{n_pix}{_fits_format(arr.dtype)}"
+            # FITS TDIM uses FORTRAN (column-major) order, so list ncol first
+            dim = f"({ncol},{nrow})"
+            columns.append(
+                fits.Column(
+                    name=key,
+                    format=fmt,
+                    array=arr.reshape(ntime, n_pix),
+                    unit=unit,
+                    dim=dim,
+                )
+            )
+            unc = getattr(product, "uncertainty", None)
+            if unc is not None and bool(unc):
+                err = np.array(unc.array).reshape(ntime, n_pix)
+                columns.append(
+                    fits.Column(
+                        name=f"{key}_ERR",
+                        format=fmt,
+                        array=err,
+                        unit=unit,
+                        dim=dim,
+                    )
+                )
+
+    # Bitwise columns (QUALITY flags etc.) — cast BitSet objects to int32
+    for key, product in dataset.bitwise_products.items():
+        arr = product.apply(int).to_numpy().astype(np.int32)
+        columns.append(fits.Column(name=key, format="J", array=arr))
+
+    # Bool columns
+    for key, product in dataset.bool_products.items():
+        arr = np.array(product, dtype=bool)
+        columns.append(fits.Column(name=key, format="L", array=arr))
+
+    # ── BinTable HDU ───────────────────────────────────────────────────────
+    table_hdu = fits.BinTableHDU.from_columns(columns, name=ext_name)
+
+    # Restore non-structural observation-level header cards from the original
+    # extension header, skipping anything auto-generated for the column layout.
+    ext_meta = meta.get(ext_name, {}) if isinstance(meta, dict) else {}
+    _STRUCTURAL = {
+        "", "XTENSION", "BITPIX", "NAXIS", "NAXIS1", "NAXIS2",
+        "PCOUNT", "GCOUNT", "TFIELDS", "EXTNAME", "EXTVER",
+    }
+    if isinstance(ext_meta, fits.Header):
+        items = [(c.keyword, c.value, c.comment) for c in ext_meta.cards]
+    elif isinstance(ext_meta, dict):
+        items = [(k, v, "") for k, v in ext_meta.items()]
+    else:
+        items = []
+    for card_key, card_val, card_comment in items:
+        if card_key in _STRUCTURAL or card_key.startswith("T") or card_key in table_hdu.header:
+            continue
+        if not isinstance(card_val, (bool, int, float, str)):
+            continue
+        try:
+            table_hdu.header[card_key] = (card_val, card_comment)
+        except Exception:
+            pass
+
+    fits.HDUList([primary_hdu, table_hdu]).writeto(file, overwrite=overwrite)
