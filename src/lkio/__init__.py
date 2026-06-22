@@ -3,7 +3,7 @@ import os
 from .diamante import read_diamante
 from .generic import check_headers, read_generic, write_fits
 from .qlp import read_qlp
-from .spoc_astropy import read_spoc
+from .spoc import read_spoc
 
 ROOTNAME = "lkv3"
 PACKAGEDIR = os.path.abspath(os.path.dirname(__file__))
