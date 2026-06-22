@@ -17,12 +17,12 @@ LK_CLASSES = {1: lkdata.DataSeries, 2: lkdata.DataSeriesCollection, 3: lkdata.Da
 
 def get_hdul(file) -> fits.HDUList:
     """Return the HDUList associated with the input"""
-    assert isinstance(file, (fits.HDUList, str)), (
+    assert isinstance(file, (fits.HDUList, str, pathlib.Path)), (
         "`file` must be a string or an HDUList."
     )
     if isinstance(file, fits.HDUList):
         hdul = file
-    elif file.startswith("s3://"):
+    elif str(file).startswith("s3://"):
         # Filename is an S3 cloud URI
         log.debug("Reading file from AWS S3 cloud.")
         hdul = fits.open(file, use_fsspec=True, fsspec_kwargs={"anon": True})
@@ -98,6 +98,8 @@ def get_data_units(data_keys, hdu) -> dict:
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
     col_data = np.array(hdu.data).byteswap().newbyteorder()
+    if not hdu.data:
+        raise AttributeError("Given HDU has no data.")
     dcube = lkdata.DataCube(
         [col_data],
         nrow=col_data.shape[0],
@@ -345,8 +347,7 @@ def write_fits(
     # ── Image path ─────────────────────────────────────────────────────────
     if _is_image_dataset(dataset):
         data_cubes = [
-            (key, np.array(p.array)[0])
-            for key, p in dataset.data_products.items()
+            (key, np.array(p.array)[0]) for key, p in dataset.data_products.items()
         ]
         bool_cubes = [
             (key, np.array(p.array)[0].astype(np.int32))
@@ -395,7 +396,9 @@ def write_fits(
 
         if arr.ndim == 1:
             columns.append(
-                fits.Column(name=key, format=_fits_format(arr.dtype), array=arr, unit=unit)
+                fits.Column(
+                    name=key, format=_fits_format(arr.dtype), array=arr, unit=unit
+                )
             )
             unc = getattr(product, "uncertainty", None)
             if unc is not None and bool(unc):
@@ -454,8 +457,17 @@ def write_fits(
     # extension header, skipping anything auto-generated for the column layout.
     ext_meta = meta.get(ext_name, {}) if isinstance(meta, dict) else {}
     _STRUCTURAL = {
-        "", "XTENSION", "BITPIX", "NAXIS", "NAXIS1", "NAXIS2",
-        "PCOUNT", "GCOUNT", "TFIELDS", "EXTNAME", "EXTVER",
+        "",
+        "XTENSION",
+        "BITPIX",
+        "NAXIS",
+        "NAXIS1",
+        "NAXIS2",
+        "PCOUNT",
+        "GCOUNT",
+        "TFIELDS",
+        "EXTNAME",
+        "EXTVER",
     }
     if isinstance(ext_meta, fits.Header):
         items = [(c.keyword, c.value, c.comment) for c in ext_meta.cards]
@@ -464,7 +476,11 @@ def write_fits(
     else:
         items = []
     for card_key, card_val, card_comment in items:
-        if card_key in _STRUCTURAL or card_key.startswith("T") or card_key in table_hdu.header:
+        if (
+            card_key in _STRUCTURAL
+            or card_key.startswith("T")
+            or card_key in table_hdu.header
+        ):
             continue
         if not isinstance(card_val, (bool, int, float, str)):
             continue
