@@ -8,8 +8,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from . import read_generic
-from .generic import get_hdul
+from .generic import read_generic, get_hdul
 from .utils import load_cosmicray_extension
 
 
@@ -21,7 +20,7 @@ def read_spoc(
     error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
     boolean_keys: Optional[Iterable[str]] = None,
     bitwise_keys: Optional[Iterable[str]] = None,
-):
+) -> lkdata.DataSet:
     """Helper function to read in a TESS fits file processed by the SPOC pipeline
 
     Parameters
