@@ -1,0 +1,25 @@
+[project]
+name = "lkio"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "astropy>=6.0.1",
+    "lkdata",
+    "numpy>=1.26.4",
+]
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.31.0",
+    "lksearch>=1.2.1",
+    "ruff>=0.15.10",
+]
+
+[tool.uv.sources]
+lkdata = { git = "https://github.com/lightkurve/lkdata" }

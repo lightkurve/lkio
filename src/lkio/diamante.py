@@ -1,6 +1,6 @@
 from astropy.io import fits
 #parent_dir_name = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath('lkdata'))))
-from .generic import generic_io
+from .generic import read_generic
 import warnings
 
 
@@ -63,7 +63,7 @@ def read_diamante(
     # Diamante breaks the generic reader because errors are E{key} rather than {key}_ERR. 
     # I'll have to re-think errors now. 
 
-    ds = generic_io(
+    ds = read_generic(
         file = hdu,
         time_keys = time_keys,
         data_keys=data_keys,
