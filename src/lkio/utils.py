@@ -1,5 +1,27 @@
 import numpy as np
 
+
+def build_aperture(hdul, nrow, ncol):
+    """Build a 2-D pipeline aperture mask from the APERTURE extension.
+
+    Parameters
+    ----------
+    hdul : astropy.io.fits.HDUList
+        The opened target pixel file.
+    nrow, ncol : int
+        Shape to fall back to when the aperture extension is missing or
+        unusable (e.g. early TESScut products stored floats in HDU 2).
+
+    Returns
+    -------
+    aperture : np.ndarray of bool, shape (nrow, ncol)
+    """
+    try:
+        return np.asarray(hdul[2].data & 2 > 0)
+    except (IndexError, TypeError):
+        return np.ones((nrow, ncol), dtype=bool)
+
+
 def load_cosmicray_extension(hdu):
     """Function to load the cosmic ray extension into a datacube
 

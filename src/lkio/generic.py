@@ -95,6 +95,22 @@ def get_data_units(data_keys, hdu) -> dict:
     return unit_dict
 
 
+def _match_error_key(key, error_keys) -> Optional[str]:
+    """Return the uncertainty column belonging to `key`, or None.
+
+    An exact ``{key}_ERR`` match always wins.  Otherwise the candidates are
+    sorted before picking one, because `error_keys` is a set and bare
+    `fnmatch.filter` would otherwise return results in iteration order --
+    e.g. 'FLUX' matches both 'FLUX_ERR' and 'FLUX_BKG_ERR' in a target pixel
+    file, and the winner would vary between runs.
+    """
+    exact = f"{key}_ERR"
+    if exact in error_keys:
+        return exact
+    candidates = sorted(fnmatch.filter(sorted(error_keys), f"*{key}*"))
+    return candidates[0] if candidates else None
+
+
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
     col_data = np.array(hdu.data).byteswap().newbyteorder()
@@ -118,6 +134,7 @@ def read_generic(
     boolean_keys: Optional[Iterable[str]] = None,
     bitwise_keys: Optional[Iterable[str]] = None,
     close_file: Optional[bool] = True,
+    cadence_mask: Optional[np.ndarray] = None,
 ) -> Union[lkdata.DataSet, lkdata.DataCube]:
     """
     Reads in a generic fits file and returns a lkdata.DataSet
@@ -140,6 +157,9 @@ def read_generic(
         boolean series or cube data contained by the fits file, by default None
     bitwise_keys : list, optional
         Bitwise series or cube data, by default None
+    cadence_mask : array of bool, optional
+        Additional per-cadence mask (e.g. from quality flags) to AND into the
+        NaN-time mask before any data is sliced, by default None
 
     Returns
     -------
@@ -161,7 +181,14 @@ def read_generic(
         meta.update({name: hdu.header})
     if isinstance(hdu, (fits.TableHDU, fits.BinTableHDU)):
         result = read_table_hdu(
-            time_keys, data_keys, error_syntax, boolean_keys, bitwise_keys, hdu, meta
+            time_keys,
+            data_keys,
+            error_syntax,
+            boolean_keys,
+            bitwise_keys,
+            hdu,
+            meta,
+            cadence_mask=cadence_mask,
         )
     else:
         result = read_image_hdu(hdu, **meta)
@@ -172,7 +199,14 @@ def read_generic(
 
 
 def read_table_hdu(
-    time_keys, data_keys, error_syntax, boolean_keys, bitwise_keys, hdu, meta
+    time_keys,
+    data_keys,
+    error_syntax,
+    boolean_keys,
+    bitwise_keys,
+    hdu,
+    meta,
+    cadence_mask=None,
 ):
     header_keys = set(hdu.columns.names.copy())
     # TODO: What happens with an error data length mismatch
@@ -201,7 +235,10 @@ def read_table_hdu(
     }
     if times_dict:
         # lkv3 products do not allow NaN time values
-        timemask = np.where(~np.isnan(np.array(list(times_dict.values()))).any(axis=0))
+        good = ~np.isnan(np.array(list(times_dict.values()))).any(axis=0)
+        if cadence_mask is not None:
+            good = good & np.asarray(cadence_mask, dtype=bool)
+        timemask = np.where(good)
         meta["timemask"] = timemask
     else:
         # No valid time key, no mask
@@ -223,12 +260,12 @@ def read_table_hdu(
         col_data = hdu.data[key]
         col_data = col_data.byteswap().newbyteorder()
         col_data = np.array(col_data)[timemask]
-        key_error = fnmatch.filter(error_keys, f"*{key}*")
+        key_error = _match_error_key(key, error_keys)
 
-        if len(key_error) > 0:
+        if key_error is not None:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
                 data=col_data,
-                uncertainty=np.array(hdu.data[key_error[0]])
+                uncertainty=np.array(hdu.data[key_error])
                 .byteswap()
                 .newbyteorder()[timemask],
             )

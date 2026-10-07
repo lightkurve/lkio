@@ -3,10 +3,12 @@
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
+import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
 from .generic import get_hdul, read_generic
+from .utils import build_aperture
 
 
 def read_qlp(
@@ -57,12 +59,14 @@ def read_qlp(
     ds.data_products["FLUX"] = ds.data_products[flux_key]
     ds.meta["FLUX_ORIGIN"] = flux_key
 
-    # `IndexError` may be raised if the aperture extension (#2) is missing
-    # `TypeError` may be raised because early versions of TESScut returned floats in HDU 2
-    try:
-        ds.meta["aperture"] = hdu[2].data & 2 > 0
-    except (IndexError, TypeError):
-        ds.meta["aperture"] = np.ones(ds.data_products["FLUX"].array.shape, dtype=bool)
+    # `IndexError`/`TypeError` from a missing or unusable aperture extension
+    # fall back to an all-True mask shaped like the aperture extension would
+    # have been (QLP products carry no pixel cube to infer a shape from).
+    if len(hdu) > 2 and hdu[2].data is not None:
+        fallback_nrow, fallback_ncol = np.shape(hdu[2].data)
+    else:
+        fallback_nrow, fallback_ncol = (1, 1)
+    ds.meta["aperture"] = build_aperture(hdu, fallback_nrow, fallback_ncol)
 
     # TODO: I don't actually see units in the header, except for time?
 
