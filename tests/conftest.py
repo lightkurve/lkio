@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-TESTFILES = Path(__file__).parent.parent / "testfiles"
+TESTFILES = Path(__file__).parent / "data"
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def tess_tpf():
     reference values, so it cannot validate targetid/ra/dec/WCS correctness --
     only that the read path produces a well-formed DataSet.
     """
-    path = TESTFILES / "neo_54467485_s082_1-1_tpf.fits"
+    path = TESTFILES / "tess25155310-s01-first-cadences.fits.gz"
     if not path.exists():
         pytest.skip(f"TESS test TPF not found at {path}")
     return path
@@ -25,9 +25,7 @@ def kepler_tpf():
 
     No such file ships with the repository; this fixture skips when absent.
     """
-    candidates = sorted(TESTFILES.glob("*kplr*tpf*.fits")) + sorted(
-        TESTFILES.glob("*ktwo*tpf*.fits")
-    )
-    if not candidates:
-        pytest.skip("No Kepler/K2 test TPF found in testfiles/ (filename containing kplr/ktwo and tpf)")
-    return candidates[0]
+    path = TESTFILES / "test-tpf-kplr-tabby-100-cadences.fits"
+    if not path.exists():
+        pytest.skip(f"Kepler test TPF not found at {path}")
+    return path
