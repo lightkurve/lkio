@@ -5,7 +5,7 @@ from astropy.wcs import WCS
 from numpy.testing import assert_allclose
 
 import lkio
-from lkio.tpf import detect_mission
+from lkio.utils import detect_mission
 
 
 def _raw_hdul(path):

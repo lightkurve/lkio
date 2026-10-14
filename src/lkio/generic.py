@@ -9,6 +9,8 @@ import lkdata
 import numpy as np
 from astropy.io import fits
 
+from .utils import detect_mission, get_time_scale
+
 log = logging.getLogger(__name__)
 
 DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
@@ -192,6 +194,11 @@ def read_generic(
         )
     else:
         result = read_image_hdu(hdu, **meta)
+
+    mission, time_format = detect_mission(hdul)
+    if mission != "Unknown":
+        result.meta.setdefault("TIME_FORMAT", time_format)
+        result.meta.setdefault("TIME_SCALE", get_time_scale(hdu.header))
 
     if close_file:
         hdul.close()

@@ -21,9 +21,14 @@ from astropy.wcs import WCS
 
 from .generic import get_hdul, read_generic
 from .quality import MISSION_QUALITY_FLAGS, QualityFlags
-from .utils import build_aperture, load_cosmicray_extension
+from .utils import (
+    build_aperture,
+    detect_mission,
+    get_time_scale,
+    load_cosmicray_extension,
+)
 
-__all__ = ["detect_mission", "read_tpf"]
+__all__ = ["read_tpf"]
 
 #: Column-5 WCS keywords (as stored in the EXT1 binary table header) mapped
 #: onto the standard image-WCS keywords they correspond to.
@@ -43,42 +48,6 @@ _COLUMN5_WCS_KEYS = {
     "21PC5": "PC2_1",
     "22PC5": "PC2_2",
 }
-
-
-def detect_mission(hdul: fits.HDUList) -> Tuple[str, str]:
-    """Sniff the mission and time format from a target pixel file.
-
-    Parameters
-    ----------
-    hdul : astropy.io.fits.HDUList
-        The opened target pixel file.
-
-    Returns
-    -------
-    mission, time_format : str, str
-        `mission` is one of "Kepler", "K2", "TESS", or "Unknown".
-        `time_format` is one of "bkjd", "btjd", or "jd".
-    """
-    header0 = hdul[0].header
-    header1 = hdul[1].header if len(hdul) > 1 else fits.Header()
-
-    bjdrefi = header1.get("BJDREFI")
-    if bjdrefi == 2457000:
-        return "TESS", "btjd"
-    if bjdrefi == 2454833:
-        if header0.get("MISSION") == "K2" or "CAMPAIGN" in header0:
-            return "K2", "bkjd"
-        return "Kepler", "bkjd"
-
-    telescop = str(header0.get("TELESCOP", "")).upper()
-    if telescop == "TESS":
-        return "TESS", "btjd"
-    if telescop == "KEPLER":
-        if header0.get("MISSION") == "K2" or "CAMPAIGN" in header0:
-            return "K2", "bkjd"
-        return "Kepler", "bkjd"
-
-    return "Unknown", "jd"
 
 
 def _normalize_mission(
@@ -198,7 +167,8 @@ def read_tpf(
     hdul = get_hdul(file)
     try:
         if len(hdul) < 2 or not isinstance(hdul[1], (fits.TableHDU, fits.BinTableHDU)):
-            msg = f"{file!r} does not contain a binary table in HDU 1 -- is this a target pixel file?"
+            msg = f"{file!r} does not contain a binary table in HDU 1"\
+                  " -- is this a target pixel file?"
             raise ValueError(msg)
         column_names = hdul[1].columns.names
         if "FLUX" not in column_names or "QUALITY" not in column_names:
@@ -251,7 +221,7 @@ def read_tpf(
 
         ds.meta["units"] = _normalize_units(ds.meta.get("units", {}))
         ds.meta["TIME_FORMAT"] = time_format
-        ds.meta["TIME_SCALE"] = str(hdul[1].header.get("TIMESYS", "tdb")).lower()
+        ds.meta["TIME_SCALE"] = get_time_scale(hdul[1].header)
         ds.meta["TIME_KEY"] = "TIME"
         ds.meta["FLUX_ORIGIN"] = flux_key
         ds.meta["MISSION"] = mission_name
