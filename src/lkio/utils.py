@@ -105,7 +105,7 @@ def load_cosmicray_extension(hdu):
     cr[inv, y, x] = f
     return cr
 
-def return_unit(colname):
+def return_unit(tab):
     #TODO: I think this will move to lkv3, not required for io. 
     for colname in tab.colnames:
         # Ensure units have the correct astropy format

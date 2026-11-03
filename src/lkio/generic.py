@@ -137,7 +137,7 @@ def read_generic(
     bitwise_keys: Optional[Iterable[str]] = None,
     close_file: Optional[bool] = True,
     cadence_mask: Optional[np.ndarray] = None,
-) -> Union[lkdata.DataSet, lkdata.DataCube]:
+) -> lkdata.DataSet:
     """
     Reads in a generic fits file and returns a lkdata.DataSet
 
