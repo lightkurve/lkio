@@ -1,4 +1,70 @@
+from typing import Tuple
+
 import numpy as np
+from astropy.io import fits
+
+
+def detect_mission(hdul: fits.HDUList) -> Tuple[str, str]:
+    """Sniff the mission and time format from a Kepler, K2, or TESS file.
+
+    Parameters
+    ----------
+    hdul : astropy.io.fits.HDUList
+        The opened fits file.
+
+    Returns
+    -------
+    mission, time_format : str, str
+        `mission` is one of "Kepler", "K2", "TESS", or "Unknown".
+        `time_format` is one of "bkjd", "btjd", or "jd".
+    """
+    header0 = hdul[0].header
+    header1 = hdul[1].header if len(hdul) > 1 else fits.Header()
+
+    bjdrefi = header1.get("BJDREFI")
+    if bjdrefi == 2457000:
+        return "TESS", "btjd"
+    if bjdrefi == 2454833:
+        if header0.get("MISSION") == "K2" or "CAMPAIGN" in header0:
+            return "K2", "bkjd"
+        return "Kepler", "bkjd"
+
+    telescop = str(header0.get("TELESCOP", "")).upper()
+    if telescop == "TESS":
+        return "TESS", "btjd"
+    if telescop == "KEPLER":
+        if header0.get("MISSION") == "K2" or "CAMPAIGN" in header0:
+            return "K2", "bkjd"
+        return "Kepler", "bkjd"
+
+    return "Unknown", "jd"
+
+
+def get_time_scale(header: fits.Header) -> str:
+    """Return the lowercased TIMESYS time scale of `header`, default "tdb"."""
+    return str(header.get("TIMESYS", "tdb")).lower()
+
+
+def build_aperture(hdul, nrow, ncol):
+    """Build a 2-D pipeline aperture mask from the APERTURE extension.
+
+    Parameters
+    ----------
+    hdul : astropy.io.fits.HDUList
+        The opened target pixel file.
+    nrow, ncol : int
+        Shape to fall back to when the aperture extension is missing or
+        unusable (e.g. early TESScut products stored floats in HDU 2).
+
+    Returns
+    -------
+    aperture : np.ndarray of bool, shape (nrow, ncol)
+    """
+    try:
+        return np.asarray(hdul[2].data & 2 > 0)
+    except (IndexError, TypeError):
+        return np.ones((nrow, ncol), dtype=bool)
+
 
 def load_cosmicray_extension(hdu):
     """Function to load the cosmic ray extension into a datacube
@@ -39,7 +105,7 @@ def load_cosmicray_extension(hdu):
     cr[inv, y, x] = f
     return cr
 
-def return_unit(colname):
+def return_unit(tab):
     #TODO: I think this will move to lkv3, not required for io. 
     for colname in tab.colnames:
         # Ensure units have the correct astropy format

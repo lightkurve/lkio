@@ -4,12 +4,11 @@ from pathlib import Path
 from typing import Iterable, Optional, Union
 
 import lkdata
-import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
 from .generic import read_generic, get_hdul
-from .utils import load_cosmicray_extension
+from .utils import build_aperture, load_cosmicray_extension
 
 
 def read_spoc(
@@ -94,12 +93,8 @@ def read_spoc(
 
     ds.meta["FLUX_ORIGIN"] = flux_key
 
-    # `IndexError` may be raised if the aperture extension (#2) is missing
-    # `TypeError` may be raised because early versions of TESScut returned floats in HDU 2
-    try:
-        ds.meta["aperture"] = hdu[2].data & 2 > 0
-    except (IndexError, TypeError):
-        ds.meta["aperture"] = np.ones(ds.data_products["FLUX"].array.shape, dtype=bool)
+    nrow, ncol = ds.data_products["FLUX"].array.shape[-2:]
+    ds.meta["aperture"] = build_aperture(hdu, nrow, ncol)
 
     # 20-second TESS data products have a 'COSMIC RAY' extension to show the
     # pipeline-removed cosmic rays. We add the array as a DataCube as necessary.
