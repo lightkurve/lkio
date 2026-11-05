@@ -23,4 +23,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-lkdata = { path = "../secret", editable = true }
+lkdata = { git = "https://github.com/lightkurve/lkdata" }
