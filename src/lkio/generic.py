@@ -115,7 +115,7 @@ def _match_error_key(key, error_keys) -> Optional[str]:
 
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
-    col_data = np.array(hdu.data).byteswap().newbyteorder()
+    col_data = np.array(hdu.data.astype(hdu.data.dtype.newbyteorder('=')))
     if not hdu.data:
         raise AttributeError("Given HDU has no data.")
     dcube = lkdata.DataCube(
@@ -237,7 +237,7 @@ def read_table_hdu(
     data_keys = data_keys.intersection(hdu.columns.names)
     meta["units"] = get_data_units(data_keys, hdu)
     times_dict = {
-        key: hdu.data[key].byteswap().newbyteorder()
+        key: hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('='))
         for key in (time_keys & header_keys)
     }
     if times_dict:
@@ -259,27 +259,27 @@ def read_table_hdu(
     }
 
     bool_dict = {
-        key: np.array(hdu.data[key]).byteswap().newbyteorder()[timemask]
+        key: np.array(hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('=')))[timemask]
         for key in (boolean_keys & header_keys)
     }
     data_series_dict = {}
     for key in data_keys & header_keys:
         col_data = hdu.data[key]
-        col_data = col_data.byteswap().newbyteorder()
+        col_data = col_data.astype(col_data.dtype.newbyteorder('='))
         col_data = np.array(col_data)[timemask]
         key_error = _match_error_key(key, error_keys)
 
         if key_error is not None:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
                 data=col_data,
-                uncertainty=np.array(hdu.data[key_error])
-                .byteswap()
-                .newbyteorder()[timemask],
+                uncertainty= np.array(hdu.data[key_error]
+                        .astype(hdu.data[key_error]
+                        .dtype.newbyteorder('=')))[timemask],
             )
 
         else:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
-                data=np.array(hdu.data[key]).byteswap().newbyteorder()[timemask],
+                data=np.array(hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('=')))[timemask],
             )
 
     dset = lkdata.DataSet(
@@ -534,3 +534,4 @@ def write_fits(
             pass
 
     fits.HDUList([primary_hdu, table_hdu]).writeto(file, overwrite=overwrite)
+
