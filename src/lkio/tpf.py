@@ -217,7 +217,7 @@ def read_tpf(
             )
             raise ValueError(msg)
 
-        nrow, ncol = ds.data_products[flux_key].array.shape[-2:]
+        shape = ds.data_products[flux_key].array.shape
 
         ds.meta["units"] = _normalize_units(ds.meta.get("units", {}))
         ds.meta["TIME_FORMAT"] = time_format
@@ -241,7 +241,7 @@ def read_tpf(
             str(targetid) if targetid is not None else None
         )
 
-        ds.meta["aperture"] = build_aperture(hdul, nrow, ncol)
+        ds.meta["aperture"] = build_aperture(hdul, shape)
         ds.meta["wcs"] = _build_tpf_wcs(hdul)
         ds.meta["column"] = int(hdul[1].header.get("1CRV5P", 0))
         ds.meta["row"] = int(hdul[1].header.get("2CRV5P", 0))

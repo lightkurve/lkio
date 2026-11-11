@@ -93,8 +93,8 @@ def read_spoc(
 
     ds.meta["FLUX_ORIGIN"] = flux_key
 
-    nrow, ncol = ds.data_products["FLUX"].array.shape[-2:]
-    ds.meta["aperture"] = build_aperture(hdu, nrow, ncol)
+    shape = ds.data_products["FLUX"].array.shape
+    ds.meta["aperture"] = build_aperture(hdu, shape)
 
     # 20-second TESS data products have a 'COSMIC RAY' extension to show the
     # pipeline-removed cosmic rays. We add the array as a DataCube as necessary.

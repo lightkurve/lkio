@@ -45,7 +45,7 @@ def get_time_scale(header: fits.Header) -> str:
     return str(header.get("TIMESYS", "tdb")).lower()
 
 
-def build_aperture(hdul, nrow, ncol):
+def build_aperture(hdul, shape):
     """Build a 2-D pipeline aperture mask from the APERTURE extension.
 
     Parameters
@@ -63,7 +63,7 @@ def build_aperture(hdul, nrow, ncol):
     try:
         return np.asarray(hdul[2].data & 2 > 0)
     except (IndexError, TypeError):
-        return np.ones((nrow, ncol), dtype=bool)
+        return np.ones(shape, dtype=bool)
 
 
 def load_cosmicray_extension(hdu):
