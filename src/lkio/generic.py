@@ -115,21 +115,24 @@ def _match_error_key(key, error_keys) -> Optional[str]:
 
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
-    col_data = np.array(hdu.data.astype(hdu.data.dtype.newbyteorder('=')))
-    if not hdu.data:
+    
+    if hdu.data is None:
+        #dcube = lkdata.DataCube()
         raise AttributeError("Given HDU has no data.")
-    dcube = lkdata.DataCube(
-        [col_data],
-        nrow=col_data.shape[0],
-        ncol=col_data.shape[1],
-    )
-    dset = lkdata.DataSet(dcube, meta=meta)
+    else:
+        col_data = np.array(hdu.data.astype(hdu.data.dtype.newbyteorder('=')))
+        dcube = lkdata.DataCube(
+            [col_data],
+            nrow=col_data.shape[0],
+            ncol=col_data.shape[1],
+        )
+        dset = lkdata.DataSet(dcube, meta=meta)
     return dset
 
 
 def read_generic(
     file: Union[str, fits.HDUList],
-    ext: int = 1,
+    #ext: int = 1,
     time_keys: Optional[Iterable[str]] = None,
     data_keys: Optional[Iterable[str]] = None,
     error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
@@ -139,7 +142,7 @@ def read_generic(
     cadence_mask: Optional[np.ndarray] = None,
 ) -> lkdata.DataSet:
     """
-    Reads in a generic fits file and returns a lkdata.DataSet
+    Reads in a generic fits file and returns a unique lkdata.DataSet for each fits extension
 
     Parameters
     ----------
@@ -168,41 +171,47 @@ def read_generic(
     ds
         lkdata.DataSet containing containing Series, Cubes, and metadata
     """
-
+    # This will loop through all headers
+    # You can specify time/boolean/bitwise keys from any extension. 
     time_keys = make_keys_set(time_keys) or set(["TIME"])
     boolean_keys = make_keys_set(boolean_keys)
     bitwise_keys = make_keys_set(bitwise_keys)
 
     hdul = get_hdul(file)
-    hdu = hdul[ext]
-    # Get information from the primary header
-    meta = {"PRIMARY": hdul[0].header}
-    if ext > 0:
+    ds_extensions = [{'PRIMARY': hdul[0].header}]
+    # Skip the primary extension, which by fits convention has no data 
+    for ext in np.arange(1,len(hdul)):
+        hdu = hdul[ext]
+        # Get information from the primary header
+        #meta = {"HEADER": hdul[0].header}
+        #if ext > 0:
         # Get information from the extension header
         name = hdu.header["EXTNAME"] or f"EXT{ext}"
-        meta.update({name: hdu.header})
-    if isinstance(hdu, (fits.TableHDU, fits.BinTableHDU)):
-        result = read_table_hdu(
-            time_keys,
-            data_keys,
-            error_syntax,
-            boolean_keys,
-            bitwise_keys,
-            hdu,
-            meta,
-            cadence_mask=cadence_mask,
-        )
-    else:
-        result = read_image_hdu(hdu, **meta)
+        meta = {name: hdu.header}
+        
+        if isinstance(hdu, (fits.TableHDU, fits.BinTableHDU)):
+            hdu_ds = read_table_hdu(
+                time_keys,
+                data_keys,
+                error_syntax,
+                boolean_keys,
+                bitwise_keys,
+                hdu,
+                meta,
+                cadence_mask=cadence_mask,
+            )
+        else:
+            hdu_ds = read_image_hdu(hdu, **meta)
 
-    mission, time_format = detect_mission(hdul)
-    if mission != "Unknown":
-        result.meta.setdefault("TIME_FORMAT", time_format)
-        result.meta.setdefault("TIME_SCALE", get_time_scale(hdu.header))
+        mission, time_format = detect_mission(hdul)
+        if mission != "Unknown":
+            hdu_ds.meta.setdefault("TIME_FORMAT", time_format)
+            hdu_ds.meta.setdefault("TIME_SCALE", get_time_scale(hdu.header))
+        ds_extensions.append(hdu_ds)
 
     if close_file:
         hdul.close()
-    return result
+    return ds_extensions
 
 
 def read_table_hdu(
