@@ -81,12 +81,13 @@ addopts = ["-ra", "--showlocals"]
 strict = true
 filterwarnings = [
   "error",
+  "ignore::DeprecationWarning:astropy.*:",  # astropy has some deprecated behavior under the hood
+  "ignore::DeprecationWarning:numpy.*:",  # astropy has some deprecated behavior under the hood
 ]
 log_level = "INFO"
 testpaths = [
   "tests",
 ]
-
 
 [tool.coverage]
 run.source = ["lkio"]
