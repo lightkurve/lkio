@@ -1,24 +1,24 @@
 """SPOC specific reading function"""
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Union
 
 import lkdata
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from .generic import read_generic, get_hdul
+from .generic import get_hdul, read_generic
 from .utils import build_aperture, load_cosmicray_extension
 
 
 def read_spoc(
-    file: Union[str, Path, fits.HDUList],
-    flux_key: Optional[str] = None,
-    time_keys: Optional[Iterable[str]] = None,
-    data_keys: Optional[Iterable[str]] = None,
-    error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
-    boolean_keys: Optional[Iterable[str]] = None,
-    bitwise_keys: Optional[Iterable[str]] = None,
+    file: str | Path | fits.HDUList,
+    flux_key: str | None = None,
+    time_keys: Iterable[str] | None = None,
+    data_keys: Iterable[str] | None = None,
+    error_syntax: str | Iterable[str] | None = "{key}_ERR",
+    boolean_keys: Iterable[str] | None = None,
+    bitwise_keys: Iterable[str] | None = None,
 ) -> lkdata.DataSet:
     """Helper function to read in a TESS fits file processed by the SPOC pipeline
 
@@ -83,10 +83,7 @@ def read_spoc(
 
     ds.meta["wcs"] = WCS(hdu[1].header)
     if not flux_key:
-        if len(ds.cubes) == 0:
-            flux_key = "PDCSAP_FLUX"
-        else:
-            flux_key = "FLUX"
+        flux_key = "PDCSAP_FLUX" if len(ds.cubes) == 0 else "FLUX"
     if flux_key != "FLUX":
         ds.data_products["FLUX"] = ds.data_products[flux_key]
         ds.meta["units"]["FLUX"] = ds.meta["units"][flux_key]

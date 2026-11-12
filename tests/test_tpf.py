@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -8,7 +10,7 @@ import lkio
 from lkio.utils import detect_mission
 
 
-def _raw_hdul(path):
+def _raw_hdul(path: str | Path) -> fits.HDUList:
     return fits.open(path)
 
 

@@ -11,8 +11,8 @@ background estimation).
 
 import contextlib
 import warnings
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Tuple, Type, Union
 
 import lkdata
 import numpy as np
@@ -51,8 +51,8 @@ _COLUMN5_WCS_KEYS = {
 
 
 def _normalize_mission(
-    mission: Optional[str], hdul: fits.HDUList
-) -> Tuple[str, str, Type[QualityFlags]]:
+    mission: str | None, hdul: fits.HDUList
+) -> tuple[str, str, type[QualityFlags]]:
     """Resolve the `mission` argument into a (name, time_format, flag-class) triple."""
     detected_name, detected_format = detect_mission(hdul)
 
@@ -62,7 +62,9 @@ def _normalize_mission(
         key = mission.strip().lower()
         if key not in MISSION_QUALITY_FLAGS:
             valid_options = tuple(MISSION_QUALITY_FLAGS.keys())
-            msg = f"mission='{mission}' is not supported, expected one of {valid_options}"
+            msg = (
+                f"mission='{mission}' is not supported, expected one of {valid_options}"
+            )
             raise ValueError(msg)
         mission_name = "TESS" if key == "tess" else ("K2" if key == "k2" else "Kepler")
         time_format = "btjd" if key == "tess" else "bkjd"
@@ -87,7 +89,7 @@ def _normalize_mission(
     return mission_name, time_format, qf_cls
 
 
-def _build_tpf_wcs(hdul: fits.HDUList) -> Optional[WCS]:
+def _build_tpf_wcs(hdul: fits.HDUList) -> WCS | None:
     """Build the pixel-to-sky WCS for a target pixel file.
 
     Prefers the full celestial WCS on the APERTURE extension (EXT2), which
@@ -115,22 +117,22 @@ def _build_tpf_wcs(hdul: fits.HDUList) -> Optional[WCS]:
         return None
 
 
-def _normalize_units(units: dict) -> dict:
+def _normalize_units(units: dict[str, str]) -> dict[str, str]:
     """Map non-standard astropy unit strings onto their canonical form."""
     remap = {"e-/s": "electron/s", "electron / s": "electron/s"}
     return {key: remap.get(value, value) for key, value in units.items()}
 
 
 def read_tpf(
-    file: Union[str, Path, fits.HDUList],
-    mission: Optional[str] = None,
-    quality_bitmask: Optional[Union[int, str]] = "default",
+    file: str | Path | fits.HDUList,
+    mission: str | None = None,
+    quality_bitmask: int | str | None = "default",
     flux_key: str = "FLUX",
-    time_keys: Optional[Iterable[str]] = None,
-    data_keys: Optional[Iterable[str]] = None,
-    error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
-    boolean_keys: Optional[Iterable[str]] = None,
-    bitwise_keys: Optional[Iterable[str]] = None,
+    time_keys: Iterable[str] | None = None,
+    data_keys: Iterable[str] | None = None,
+    error_syntax: str | Iterable[str] | None = "{key}_ERR",
+    boolean_keys: Iterable[str] | None = None,
+    bitwise_keys: Iterable[str] | None = None,
 ) -> lkdata.DataSet:
     """Read a Kepler, K2, or TESS target pixel file into an `lkdata.DataSet`.
 
@@ -167,8 +169,10 @@ def read_tpf(
     hdul = get_hdul(file)
     try:
         if len(hdul) < 2 or not isinstance(hdul[1], (fits.TableHDU, fits.BinTableHDU)):
-            msg = f"{file!r} does not contain a binary table in HDU 1"\
-                  " -- is this a target pixel file?"
+            msg = (
+                f"{file!r} does not contain a binary table in HDU 1"
+                " -- is this a target pixel file?"
+            )
             raise ValueError(msg)
         column_names = hdul[1].columns.names
         if "FLUX" not in column_names or "QUALITY" not in column_names:

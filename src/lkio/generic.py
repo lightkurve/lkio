@@ -1,12 +1,15 @@
 """Generic read/write functions"""
 
+import contextlib
 import fnmatch
-from typing import Optional, Union, Iterable
 import logging
 import pathlib
+from collections.abc import Iterable
+from typing import Any
 
 import lkdata
 import numpy as np
+import numpy.typing as npt
 from astropy.io import fits
 
 from .utils import detect_mission, get_time_scale
@@ -17,7 +20,7 @@ DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
 LK_CLASSES = {1: lkdata.DataSeries, 2: lkdata.DataSeriesCollection, 3: lkdata.DataCube}
 
 
-def get_hdul(file) -> fits.HDUList:
+def get_hdul(file: str | pathlib.Path | fits.HDUList) -> fits.HDUList:
     """Return the HDUList associated with the input"""
     assert isinstance(file, (fits.HDUList, str, pathlib.Path)), (
         "`file` must be a string or an HDUList."
@@ -34,7 +37,9 @@ def get_hdul(file) -> fits.HDUList:
     return hdul
 
 
-def check_headers(file):
+def check_headers(
+    file: str | pathlib.Path | fits.HDUList,
+) -> tuple[list[fits.Header], list[dict[str, Any]]]:
     """Convenience function to get fits headers.
 
     Parameters
@@ -51,7 +56,7 @@ def check_headers(file):
     with get_hdul(file) as hdul:
         headers = [hdu.header for hdu in hdul]
 
-    def check_kw(kw):
+    def check_kw(kw: str) -> list[list[Any]]:
         # Check column names for identifying keywords
         return [
             [header[key] for key in header["TTYPE*"] if kw in header[key].lower()]
@@ -62,7 +67,7 @@ def check_headers(file):
     error_syntax = check_kw("err")
     boolean_keys = check_kw("aperture")
     bitwise_keys = check_kw("quality")
-    keys_list = []
+    keys_list: list[dict[str, Any]] = []
     for i in range(len(headers)):
         keys_list.append({})
         if time_keys[i]:
@@ -77,13 +82,15 @@ def check_headers(file):
     return headers, keys_list
 
 
-def make_keys_set(keys) -> set:
+def make_keys_set(keys: Iterable[str] | None) -> set[str]:
     """Return a set of keys"""
     keys = keys or []
     return set(np.atleast_1d(np.array(keys)))
 
 
-def get_data_units(data_keys, hdu) -> dict:
+def get_data_units(
+    data_keys: Iterable[str], hdu: fits.BinTableHDU | fits.TableHDU
+) -> dict[str, str]:
     unit_dict = {}
     for key in data_keys:
         datakeys = list(hdu.header["TTYPE*"].values())
@@ -97,7 +104,7 @@ def get_data_units(data_keys, hdu) -> dict:
     return unit_dict
 
 
-def _match_error_key(key, error_keys) -> Optional[str]:
+def _match_error_key(key: str, error_keys: Iterable[str]) -> str | None:
     """Return the uncertainty column belonging to `key`, or None.
 
     An exact ``{key}_ERR`` match always wins.  Otherwise the candidates are
@@ -113,30 +120,30 @@ def _match_error_key(key, error_keys) -> Optional[str]:
     return candidates[0] if candidates else None
 
 
-def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
+def read_image_hdu(hdu: fits.ImageHDU, **meta: Any) -> lkdata.DataSet:
     # Image data
-    col_data = np.array(hdu.data.astype(hdu.data.dtype.newbyteorder('=')))
+    col_data = np.array(hdu.data.astype(hdu.data.dtype.newbyteorder("=")))
     if not hdu.data:
-        raise AttributeError("Given HDU has no data.")
+        msg = "Given HDU has no data."
+        raise AttributeError(msg)
     dcube = lkdata.DataCube(
         [col_data],
         nrow=col_data.shape[0],
         ncol=col_data.shape[1],
     )
-    dset = lkdata.DataSet(dcube, meta=meta)
-    return dset
+    return lkdata.DataSet(dcube, meta=meta)
 
 
 def read_generic(
-    file: Union[str, fits.HDUList],
+    file: str | fits.HDUList,
     ext: int = 1,
-    time_keys: Optional[Iterable[str]] = None,
-    data_keys: Optional[Iterable[str]] = None,
-    error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
-    boolean_keys: Optional[Iterable[str]] = None,
-    bitwise_keys: Optional[Iterable[str]] = None,
-    close_file: Optional[bool] = True,
-    cadence_mask: Optional[np.ndarray] = None,
+    time_keys: Iterable[str] | None = None,
+    data_keys: Iterable[str] | None = None,
+    error_syntax: str | Iterable[str] | None = "{key}_ERR",
+    boolean_keys: Iterable[str] | None = None,
+    bitwise_keys: Iterable[str] | None = None,
+    close_file: bool | None = True,
+    cadence_mask: np.ndarray | None = None,
 ) -> lkdata.DataSet:
     """
     Reads in a generic fits file and returns a lkdata.DataSet
@@ -169,7 +176,7 @@ def read_generic(
         lkdata.DataSet containing containing Series, Cubes, and metadata
     """
 
-    time_keys = make_keys_set(time_keys) or set(["TIME"])
+    time_keys = make_keys_set(time_keys) or {"TIME"}
     boolean_keys = make_keys_set(boolean_keys)
     bitwise_keys = make_keys_set(bitwise_keys)
 
@@ -206,25 +213,21 @@ def read_generic(
 
 
 def read_table_hdu(
-    time_keys,
-    data_keys,
-    error_syntax,
-    boolean_keys,
-    bitwise_keys,
-    hdu,
-    meta,
-    cadence_mask=None,
-):
+    time_keys: set[str],
+    data_keys: Iterable[str] | None,
+    error_syntax: str | Iterable[str] | None,
+    boolean_keys: set[str],
+    bitwise_keys: set[str],
+    hdu: fits.BinTableHDU | fits.TableHDU,
+    meta: dict[str, Any],
+    cadence_mask: np.ndarray | None = None,
+) -> lkdata.DataSet:
     header_keys = set(hdu.columns.names.copy())
     # TODO: What happens with an error data length mismatch
     if error_syntax == "{key}_ERR":
-        error_keys = set(
-            [string for string in hdu.columns.names if string.endswith("_ERR")]
-        )
+        error_keys = {string for string in hdu.columns.names if string.endswith("_ERR")}
     elif error_syntax == "E{key}":
-        error_keys = set(
-            [string for string in hdu.columns.names if string.startswith("E")]
-        )
+        error_keys = {string for string in hdu.columns.names if string.startswith("E")}
     else:
         error_keys = set()
     if not data_keys:
@@ -236,8 +239,8 @@ def read_table_hdu(
     data_keys = make_keys_set(data_keys)
     data_keys = data_keys.intersection(hdu.columns.names)
     meta["units"] = get_data_units(data_keys, hdu)
-    times_dict = {
-        key: hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('='))
+    times_dict: dict[str, np.ndarray] | None = {
+        key: hdu.data[key].astype(hdu.data[key].dtype.newbyteorder("="))
         for key in (time_keys & header_keys)
     }
     if times_dict:
@@ -251,7 +254,9 @@ def read_table_hdu(
         # No valid time key, no mask
         timemask = slice(0, -1)
 
-    times_dict = {key: value[timemask] for key, value in times_dict.items()} or None
+    times_dict = {
+        key: value[timemask] for key, value in (times_dict or {}).items()
+    } or None
 
     bitwise_dict = {
         key: np.array(hdu.data[key]).astype(int)[timemask]
@@ -259,43 +264,48 @@ def read_table_hdu(
     }
 
     bool_dict = {
-        key: np.array(hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('=')))[timemask]
+        key: np.array(hdu.data[key].astype(hdu.data[key].dtype.newbyteorder("=")))[
+            timemask
+        ]
         for key in (boolean_keys & header_keys)
     }
     data_series_dict = {}
     for key in data_keys & header_keys:
         col_data = hdu.data[key]
-        col_data = col_data.astype(col_data.dtype.newbyteorder('='))
+        col_data = col_data.astype(col_data.dtype.newbyteorder("="))
         col_data = np.array(col_data)[timemask]
         key_error = _match_error_key(key, error_keys)
 
         if key_error is not None:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
                 data=col_data,
-                uncertainty= np.array(hdu.data[key_error]
-                        .astype(hdu.data[key_error]
-                        .dtype.newbyteorder('=')))[timemask],
+                uncertainty=np.array(
+                    hdu.data[key_error].astype(
+                        hdu.data[key_error].dtype.newbyteorder("=")
+                    )
+                )[timemask],
             )
 
         else:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
-                data=np.array(hdu.data[key].astype(hdu.data[key].dtype.newbyteorder('=')))[timemask],
+                data=np.array(
+                    hdu.data[key].astype(hdu.data[key].dtype.newbyteorder("="))
+                )[timemask],
             )
 
-    dset = lkdata.DataSet(
+    return lkdata.DataSet(
         data_products=data_series_dict,
         bool_products=bool_dict,
         bitwise_products=bitwise_dict,
         time_indices=times_dict,
         meta=meta,
     )
-    return dset
 
 
 # ── Write ──────────────────────────────────────────────────────────────────
 
 
-def _fits_format(dtype) -> str:
+def _fits_format(dtype: npt.DTypeLike) -> str:
     """Map a numpy dtype to a FITS column format code."""
     dtype = np.dtype(dtype)
     if np.issubdtype(dtype, np.float64):
@@ -311,7 +321,7 @@ def _fits_format(dtype) -> str:
     return "D"
 
 
-def _build_primary_header(meta_val) -> fits.Header:
+def _build_primary_header(meta_val: fits.Header | dict[str, Any] | None) -> fits.Header:
     """Return a fits.Header built from a dict or an existing Header."""
     if isinstance(meta_val, fits.Header):
         return meta_val.copy()
@@ -323,10 +333,8 @@ def _build_primary_header(meta_val) -> fits.Header:
             continue
         if not isinstance(val, (bool, int, float, str)):
             continue
-        try:
+        with contextlib.suppress(Exception):
             header[key] = val
-        except Exception:
-            pass
     return header
 
 
@@ -345,15 +353,12 @@ def _is_image_dataset(dataset: lkdata.DataSet) -> bool:
     for p in dataset.data_products.values():
         if not isinstance(p, lkdata.DataCube):
             return False
-    for p in dataset.bool_products.values():
-        if not isinstance(p, lkdata.BoolCube):
-            return False
-    return True
+    return all(isinstance(p, lkdata.BoolCube) for p in dataset.bool_products.values())
 
 
 def write_fits(
     dataset: lkdata.DataSet,
-    file: Union[str, pathlib.Path],
+    file: str | pathlib.Path,
     ext_name: str = "LIGHTCURVE",
     overwrite: bool = False,
 ) -> None:
@@ -385,7 +390,7 @@ def write_fits(
         Overwrite an existing file, by default False.
     """
     meta = getattr(dataset, "meta", None) or {}
-    units: dict = meta.get("units", {}) if isinstance(meta, dict) else {}
+    units: dict[str, str] = meta.get("units", {}) if isinstance(meta, dict) else {}
     primary_header = _build_primary_header(meta.get("PRIMARY", {}))
 
     # ── Image path ─────────────────────────────────────────────────────────
@@ -403,7 +408,9 @@ def write_fits(
             key, arr2d = all_images[0]
             hdul = fits.HDUList([fits.PrimaryHDU(data=arr2d, header=primary_header)])
         else:
-            hdus: list = [fits.PrimaryHDU(header=primary_header)]
+            hdus: list[fits.PrimaryHDU | fits.ImageHDU] = [
+                fits.PrimaryHDU(header=primary_header)
+            ]
             for key, arr2d in all_images:
                 ext_header = _build_primary_header(meta.get(key, {}))
                 hdus.append(fits.ImageHDU(data=arr2d, header=ext_header, name=key))
@@ -416,7 +423,7 @@ def write_fits(
     primary_hdu = fits.PrimaryHDU(header=primary_header)
 
     # ── Build table columns ────────────────────────────────────────────────
-    columns: list = []
+    columns: list[fits.Column] = []
 
     # Time-index columns (all MultiIndex levels except the default integer sequence)
     index_df = dataset.index.to_frame(index=False)
@@ -528,10 +535,7 @@ def write_fits(
             continue
         if not isinstance(card_val, (bool, int, float, str)):
             continue
-        try:
+        with contextlib.suppress(Exception):
             table_hdu.header[card_key] = (card_val, card_comment)
-        except Exception:
-            pass
 
     fits.HDUList([primary_hdu, table_hdu]).writeto(file, overwrite=overwrite)
-

@@ -6,15 +6,15 @@ below give each bit a name and a human-readable description, and provide the
 """
 
 import logging
-from typing import Any, ClassVar, Dict, Optional, Type, Union
+from typing import Any, ClassVar
 
 import numpy as np
 
 log = logging.getLogger(__name__)
 
 __all__ = [
-    "KeplerQualityFlags",
     "MISSION_QUALITY_FLAGS",
+    "KeplerQualityFlags",
     "QualityFlags",
     "TessQualityFlags",
 ]
@@ -28,11 +28,11 @@ def _as_values(array: Any) -> Any:
 class QualityFlags:
     """Abstract base class for the mission quality-flag tables."""
 
-    STRINGS: ClassVar[Dict[int, str]] = {}
-    OPTIONS: ClassVar[Dict[str, int]] = {}
+    STRINGS: ClassVar[dict[int, str]] = {}
+    OPTIONS: ClassVar[dict[str, int]] = {}
 
     @classmethod
-    def decode(cls, quality: Any) -> list:
+    def decode(cls, quality: Any) -> list[str]:
         """Convert a QUALITY value into a list of human-readable strings.
 
         This function takes the QUALITY bitstring that can be found for each
@@ -60,7 +60,7 @@ class QualityFlags:
 
     @classmethod
     def create_quality_mask(
-        cls, quality_array: Any, bitmask: Optional[Union[int, str]] = None
+        cls, quality_array: Any, bitmask: int | str | None = None
     ) -> np.ndarray:
         """Return a boolean array which flags good cadences given a bitmask.
 
@@ -167,7 +167,7 @@ class KeplerQualityFlags(QualityFlags):
     HARDEST_BITMASK = 2096639
 
     #: Dictionary which provides friendly names for the various bitmasks.
-    OPTIONS: ClassVar[Dict[str, int]] = {
+    OPTIONS: ClassVar[dict[str, int]] = {
         "none": 0,
         "default": DEFAULT_BITMASK,
         "hard": HARD_BITMASK,
@@ -175,7 +175,7 @@ class KeplerQualityFlags(QualityFlags):
     }
 
     #: Pretty string descriptions for each flag
-    STRINGS: ClassVar[Dict[int, str]] = {
+    STRINGS: ClassVar[dict[int, str]] = {
         1: "Attitude tweak",
         2: "Safe mode",
         4: "Coarse point",
@@ -253,7 +253,7 @@ class TessQualityFlags(QualityFlags):
     HARDEST_BITMASK = 65535
 
     #: Dictionary which provides friendly names for the various bitmasks.
-    OPTIONS: ClassVar[Dict[str, int]] = {
+    OPTIONS: ClassVar[dict[str, int]] = {
         "none": 0,
         "default": DEFAULT_BITMASK,
         "hard": HARD_BITMASK,
@@ -261,7 +261,7 @@ class TessQualityFlags(QualityFlags):
     }
 
     #: Pretty string descriptions for each flag
-    STRINGS: ClassVar[Dict[int, str]] = {
+    STRINGS: ClassVar[dict[int, str]] = {
         1: "Attitude tweak",
         2: "Safe mode",
         4: "Coarse point",
@@ -282,7 +282,7 @@ class TessQualityFlags(QualityFlags):
 
 
 #: Maps a (lower-cased) mission name onto its quality-flag table.
-MISSION_QUALITY_FLAGS: Dict[str, Type[QualityFlags]] = {
+MISSION_QUALITY_FLAGS: dict[str, type[QualityFlags]] = {
     "kepler": KeplerQualityFlags,
     "k2": KeplerQualityFlags,
     "tess": TessQualityFlags,
