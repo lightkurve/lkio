@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "lkio"
-version = "0.1.dev26+gf6cb421a5.d20261112"
+version = "0.1.dev31+g9de0e001f.d20261112"
 source = { editable = "." }
 dependencies = [
     { name = "astropy", version = "6.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },

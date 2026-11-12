@@ -30,9 +30,9 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "astropy>=6.0.1",
+    "astropy>=7.0.0",
     "lkdata",
-    "numpy>=1.26.4",
+    "numpy>=2.4.0",
 ]
 [project.urls]
 Homepage = "https://github.com/lightkurve/lkio"
