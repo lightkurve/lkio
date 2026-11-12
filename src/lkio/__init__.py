@@ -5,7 +5,7 @@ lkio: Takes you from fits to DataSets
 
 from __future__ import annotations
 
-import Path
+from pathlib import Path
 
 from . import time as _time  # noqa: F401  (registers the bkjd/btjd astropy Time formats)
 from ._version import version as __version__
@@ -17,7 +17,7 @@ from .spoc import read_spoc
 from .tpf import read_tpf
 
 ROOTNAME = "lkv3"
-PACKAGEDIR = Path.resolve(Path.parent(__file__))
+PACKAGEDIR = Path(__file__).resolve().parent
 
 __all__ = [
     "KeplerQualityFlags",

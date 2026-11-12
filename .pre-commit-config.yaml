@@ -21,6 +21,7 @@ repos:
         args: ["--pytest-test-first"]
       - id: requirements-txt-fixer
       - id: trailing-whitespace
+      - id: check-toml
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: "v1.10.0"
@@ -37,7 +38,7 @@ repos:
         args: [--prose-wrap=always]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: "v0.17.1"
+    rev: "v0.17.4"
     hooks:
       - id: ruff-check
         args: ["--fix"]
@@ -45,7 +46,7 @@ repos:
         types_or: [python, pyi, jupyter, markdown, pyproject]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: "v2.4.0"
+    rev: "v2.4.1"
     hooks:
       - id: mypy
         files: src|tests|noxfile.py
@@ -53,6 +54,8 @@ repos:
         additional_dependencies:
           - nox
           - pytest
+          - numpy
+          - "lkdata @ git+https://github.com/lightkurve/lkdata"
 
   - repo: https://github.com/codespell-project/codespell
     rev: "v2.4.3"
@@ -73,19 +76,19 @@ repos:
         exclude: .pre-commit-config.yaml
 
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: "0.26"
+    rev: "v0.27"
     hooks:
       - id: validate-pyproject
         additional_dependencies: ["validate-pyproject-schema-store[all]"]
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: "0.38.2"
+    rev: "0.39.0"
     hooks:
       - id: check-dependabot
       - id: check-github-workflows
       - id: check-readthedocs
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: "v1.31.1"
+    rev: "v1.32.0"
     hooks:
       - id: zizmor

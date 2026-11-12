@@ -33,7 +33,6 @@ dependencies = [
     "astropy>=6.0.1",
     "lkdata",
     "numpy>=1.26.4",
-    "prek>=0.5.10",
 ]
 [project.urls]
 Homepage = "https://github.com/lightkurve/lkio"
@@ -111,6 +110,24 @@ module = "lkio.*"
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
+# These third-party dependencies do not ship type stubs or a py.typed marker,
+# so mypy cannot analyse them.  This only silences "missing stubs" noise from
+# the dependencies themselves; our own code is still fully type-checked.
+[[tool.mypy.overrides]]
+module = [
+  "astropy.*",
+  "lkdata.*",
+  "astroquery.*",
+  "numpy.*",
+]
+ignore_missing_imports = true
+
+# NumPy 2.5 stubs use Python 3.12 type-statement syntax while mypy intentionally
+# targets Python 3.10 for test typing; skip parsing NumPy internals.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
 
 [tool.ruff]
 show-fixes = true
@@ -174,3 +191,4 @@ messages_control.disable = [
 ]
 [tool.uv.sources]
 lkdata = { git = "https://github.com/lightkurve/lkdata" }
+lksearch = { git = "https://github.com/lightkurve/lksearch" }

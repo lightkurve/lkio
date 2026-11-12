@@ -1,8 +1,9 @@
 """QLP specific reading function"""
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional, Union
 
+import lkdata
 import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -12,15 +13,14 @@ from .utils import build_aperture
 
 
 def read_qlp(
-    file: Union[str, Path, fits.HDUList],
-    flux_key: Optional[str] = None,
-    time_keys: Optional[Iterable[str]] = None,
-    data_keys: Optional[Iterable[str]] = None,
-    error_syntax: Optional[Union[str, Iterable[str]]] = "{key}_ERR",
-    boolean_keys: Optional[Iterable[str]] = None,
-    bitwise_keys: Optional[Iterable[str]] = None,
-):
-
+    file: str | Path | fits.HDUList,
+    flux_key: str | None = None,
+    time_keys: Iterable[str] | None = None,
+    data_keys: Iterable[str] | None = None,
+    error_syntax: str | Iterable[str] | None = "{key}_ERR",
+    boolean_keys: Iterable[str] | None = None,
+    bitwise_keys: Iterable[str] | None = None,
+) -> lkdata.DataSet:
     hdu = get_hdul(file)
     time_keys = time_keys or ["TIME", "CADENCENO", "ORBITID"]
     data_keys = data_keys or [
@@ -51,10 +51,7 @@ def read_qlp(
 
     # QLP changes for extended mission 2 (sector 56+). Now using “DET_FLUX” and “DET_FLUX_ERR” instead of “KSPSAP_FLUX” and “KSPSAP_FLUX_ERR” for the detrended flux and detrended flux error, respectively
     if not flux_key:
-        if "DET_FLUX" in ds.data_products.keys():
-            flux_key = "DET_FLUX"
-        else:
-            flux_key = "KSPSAP_FLUX"
+        flux_key = "DET_FLUX" if "DET_FLUX" in ds.data_products else "KSPSAP_FLUX"
 
     ds.data_products["FLUX"] = ds.data_products[flux_key]
     ds.meta["FLUX_ORIGIN"] = flux_key
@@ -66,7 +63,7 @@ def read_qlp(
         fallback_nrow, fallback_ncol = np.shape(hdu[2].data)
     else:
         fallback_nrow, fallback_ncol = (1, 1)
-    ds.meta["aperture"] = build_aperture(hdu, fallback_nrow, fallback_ncol)
+    ds.meta["aperture"] = build_aperture(hdu, (fallback_nrow, fallback_ncol))
 
     # TODO: I don't actually see units in the header, except for time?
 

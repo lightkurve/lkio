@@ -1,25 +1,48 @@
-from astropy.io import fits
-#parent_dir_name = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath('lkdata'))))
-from .generic import read_generic
 import warnings
+from collections.abc import Iterable
+from pathlib import Path
+
+import lkdata
+from astropy.io import fits
+
+# parent_dir_name = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath('lkdata'))))
+from .generic import read_generic
+
+_DIAMANTE_DATA_KEYS = [
+    "LC0_AP1",
+    "LC1_AP1",
+    "LC2_AP1",
+    "LC0_AP2",
+    "LC1_AP2",
+    "LC2_AP2",
+    "LC0_AP3",
+    "LC1_AP3",
+    "LC2_AP3",
+    "LC0_AP4",
+    "LC1_AP4",
+    "LC2_AP4",
+    "SKY",
+    "RA_AP1",
+    "DEC_AP1",
+    "RA_AP2",
+    "DEC_AP2",
+    "RA_AP3",
+    "DEC_AP3",
+    "RA_AP4",
+    "DEC_AP4",
+]
 
 
 def read_diamante(
-        file,
-        flux = 'LC1_AP3',
-        time_keys = ['BTJD'], 
-        data_keys = ['LC0_AP1','LC1_AP1','LC2_AP1',
-                     'LC0_AP2','LC1_AP2','LC2_AP2',
-                     'LC0_AP3','LC1_AP3','LC2_AP3',
-                     'LC0_AP4','LC1_AP4','LC2_AP4',
-                     'SKY', 
-                     'RA_AP1', 'DEC_AP1','RA_AP2', 'DEC_AP2',
-                     'RA_AP3', 'DEC_AP3','RA_AP4', 'DEC_AP4'],
-        #error_keys = ['ELC0_AP1']
-        #alternatively, could get all data by using keys = hdu[1].header['TTYPE*']. This includes time columns though
-        boolean_keys = [],
-        bitwise_keys =['FLAG_AP1','FLAG_AP2','FLAG_AP3','FLAG_AP4'], 
-              ):
+    file: str | Path | fits.HDUList,
+    flux: str = "LC1_AP3",
+    time_keys: Iterable[str] | None = None,
+    data_keys: Iterable[str] | None = None,
+    # error_keys = ['ELC0_AP1']
+    # alternatively, could get all data by using keys = hdu[1].header['TTYPE*']. This includes time columns though
+    boolean_keys: Iterable[str] | None = None,
+    bitwise_keys: Iterable[str] | None = None,
+) -> lkdata.DataSet:
     """Helper function to read in a TESS fits file processed by the SPOC pipeline
 
     Parameters
@@ -43,53 +66,59 @@ def read_diamante(
         lkdata.DataSet containing data from the fits file
     """
 
-    '''if isinstance(file, fits.HDUList):
+    """if isinstance(file, fits.HDUList):
         hdu = file
     elif isinstance(file, str):
         hdu = fits.open(file)
     else:
-        warnings.warn('No file provided.')'''
-    
+        warnings.warn('No file provided.')"""
+
+    if time_keys is None:
+        time_keys = ["BTJD"]
+    if data_keys is None:
+        data_keys = _DIAMANTE_DATA_KEYS
+    if boolean_keys is None:
+        boolean_keys = []
+    if bitwise_keys is None:
+        bitwise_keys = ["FLAG_AP1", "FLAG_AP2", "FLAG_AP3", "FLAG_AP4"]
+
     if isinstance(file, fits.HDUList):
         hdu = file
     elif isinstance(file, str):
         hdu = fits.open(file)
     else:
-        warnings.warn('No file provided.')
+        warnings.warn("No file provided.", stacklevel=2)
 
-    # Diamante does not contain the required 'EXTNAME' keywork, so add it here
-    hdu[0].header['EXTNAME'] = 'PRIMARY'
-    hdu[1].header['EXTNAME'] = 'LIGHTCURVE'
-    # Diamante breaks the generic reader because errors are E{key} rather than {key}_ERR. 
-    # I'll have to re-think errors now. 
+    # Diamante does not contain the required 'EXTNAME' keyword, so add it here
+    hdu[0].header["EXTNAME"] = "PRIMARY"
+    hdu[1].header["EXTNAME"] = "LIGHTCURVE"
+    # Diamante breaks the generic reader because errors are E{key} rather than {key}_ERR.
+    # I'll have to re-think errors now.
 
     ds = read_generic(
-        file = hdu,
-        time_keys = time_keys,
+        file=hdu,
+        time_keys=time_keys,
         data_keys=data_keys,
-        boolean_keys= boolean_keys,
-        bitwise_keys = bitwise_keys,
-        error_syntax = 'E{key}',
-        close_file = True,
-        )
+        boolean_keys=boolean_keys,
+        bitwise_keys=bitwise_keys,
+        error_syntax="E{key}",
+        close_file=True,
+    )
 
-
-    if flux != 'FLUX':
+    if flux != "FLUX":
         ds.data_products["FLUX"] = ds.data_products[flux]
-        if flux.split('_')[0] == 'LCO':
-            ds.meta['units']["FLUX"] = 'e-/s'
+        if flux.split("_", maxsplit=1)[0] == "LCO":
+            ds.meta["units"]["FLUX"] = "e-/s"
         else:
-            ds.meta['units']["FLUX"] = None
+            ds.meta["units"]["FLUX"] = None
 
-    ds.meta['FLUX_ORIGIN'] = flux
+    ds.meta["FLUX_ORIGIN"] = flux
 
     # No WCS as the header does not include the required keywords
 
     # diamente lc does not contain the aperture in the same way as SPOC
     # it only had the aperture radius. You can get this from the default flux column
-    ap = flux.split('AP')[1]
-    ds.meta['aperture'] = ap
+    ap = flux.split("AP")[1]
+    ds.meta["aperture"] = ap
 
-    
     return ds
-

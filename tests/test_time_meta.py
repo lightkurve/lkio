@@ -11,7 +11,7 @@ TESS_LC = TESTFILES / "tess2020324010417-s0032-0000000685125879-0200-s_lc.fits"
 UNKNOWN = TESTFILES / "wasp-155_190817_achromatic_k.fits"
 
 
-def _require(path):
+def _require(path: Path) -> Path:
     if not path.exists():
         pytest.skip(f"{path} not found")
     return path
