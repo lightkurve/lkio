@@ -1098,14 +1098,13 @@ dependencies = [
 
 [[package]]
 name = "lkio"
-version = "0.1.dev25+g5813b138c.d20261111"
+version = "0.1.dev26+gf6cb421a5.d20261112"
 source = { editable = "." }
 dependencies = [
     { name = "astropy", version = "6.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
     { name = "lkdata" },
     { name = "numpy" },
-    { name = "prek" },
 ]
 
 [package.dev-dependencies]
@@ -1137,13 +1136,12 @@ requires-dist = [
     { name = "astropy", specifier = ">=6.0.1" },
     { name = "lkdata", git = "https://github.com/lightkurve/lkdata" },
     { name = "numpy", specifier = ">=1.26.4" },
-    { name = "prek", specifier = ">=0.5.10" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "ipykernel", specifier = ">=6.31.0" },
-    { name = "lksearch", specifier = ">=1.2.1" },
+    { name = "lksearch", git = "https://github.com/lightkurve/lksearch" },
     { name = "prek", specifier = ">=0.5.10" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest", specifier = ">=9" },
@@ -1164,8 +1162,8 @@ test = [
 
 [[package]]
 name = "lksearch"
-version = "1.2.1"
-source = { registry = "https://pypi.org/simple" }
+version = "1.2.2"
+source = { git = "https://github.com/lightkurve/lksearch#cc6a19a620e0db1c8379b9d8a301aee4c0b59a25" }
 dependencies = [
     { name = "astropy", version = "6.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.13'" },
     { name = "astropy", version = "7.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.13'" },
@@ -1176,10 +1174,6 @@ dependencies = [
     { name = "requests" },
     { name = "tesswcs" },
     { name = "tqdm" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/6a/aeaf9b496fe4006dd4a674d4d278b3340b2fd4f011374c1bc58b16ed2efb/lksearch-1.2.1.tar.gz", hash = "sha256:2ce1fc4673231dd0e970fe1c577ef0cab0a3f7076ba4dc12404f4443a8a5ca72", size = 34650 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/83/0e9f3aee1587859a278531a892932fe35f1cd381b20b1b4c851721ee77c8/lksearch-1.2.1-py3-none-any.whl", hash = "sha256:e55da2bd26aca96e122b23935949e446a4a5500843b4f73a414c3441fb4d619c", size = 39853 },
 ]
 
 [[package]]
