@@ -17,6 +17,12 @@ DEFAULT_TIME_KEYS = ["TIME", "TIMECORR", "CADENCENO"]
 LK_CLASSES = {1: lkdata.DataSeries, 2: lkdata.DataSeriesCollection, 3: lkdata.DataCube}
 
 
+def _to_native_byteorder(arr):
+    """Ensure array has native byte order (compatible with NumPy 1.x and 2.x)."""
+    arr = np.asarray(arr)
+    return arr.astype(arr.dtype.newbyteorder("="), copy=False)
+
+
 def get_hdul(file) -> fits.HDUList:
     """Return the HDUList associated with the input"""
     assert isinstance(file, (fits.HDUList, str, pathlib.Path)), (
@@ -115,7 +121,7 @@ def _match_error_key(key, error_keys) -> Optional[str]:
 
 def read_image_hdu(hdu, **meta) -> lkdata.DataSet:
     # Image data
-    col_data = np.array(hdu.data).byteswap().newbyteorder()
+    col_data = _to_native_byteorder(hdu.data)
     if not hdu.data:
         raise AttributeError("Given HDU has no data.")
     dcube = lkdata.DataCube(
@@ -237,7 +243,7 @@ def read_table_hdu(
     data_keys = data_keys.intersection(hdu.columns.names)
     meta["units"] = get_data_units(data_keys, hdu)
     times_dict = {
-        key: hdu.data[key].byteswap().newbyteorder()
+        key: _to_native_byteorder(hdu.data[key])
         for key in (time_keys & header_keys)
     }
     if times_dict:
@@ -259,27 +265,23 @@ def read_table_hdu(
     }
 
     bool_dict = {
-        key: np.array(hdu.data[key]).byteswap().newbyteorder()[timemask]
+        key: _to_native_byteorder(hdu.data[key])[timemask]
         for key in (boolean_keys & header_keys)
     }
     data_series_dict = {}
     for key in data_keys & header_keys:
-        col_data = hdu.data[key]
-        col_data = col_data.byteswap().newbyteorder()
-        col_data = np.array(col_data)[timemask]
+        col_data = _to_native_byteorder(hdu.data[key])[timemask]
         key_error = _match_error_key(key, error_keys)
 
         if key_error is not None:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
                 data=col_data,
-                uncertainty=np.array(hdu.data[key_error])
-                .byteswap()
-                .newbyteorder()[timemask],
+                uncertainty=_to_native_byteorder(hdu.data[key_error])[timemask],
             )
 
         else:
             data_series_dict[key] = LK_CLASSES[col_data.ndim](
-                data=np.array(hdu.data[key]).byteswap().newbyteorder()[timemask],
+                data=_to_native_byteorder(hdu.data[key])[timemask],
             )
 
     dset = lkdata.DataSet(
