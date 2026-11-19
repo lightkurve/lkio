@@ -1,6 +1,6 @@
 from astropy.io import fits
 #parent_dir_name = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath('lkdata'))))
-from .generic import read_generic
+from ..generic.generic_fits import read_generic
 import warnings
 
 
